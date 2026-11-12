@@ -1,0 +1,99 @@
+{
+  "PSA.1": {
+    "title": "The Two Ways",
+    "palette": "dawn",
+    "themes": [
+      { "title": "Rootedness", "summary": "Like a tree planted by water, a life rooted in God stays green.", "symbol": "tree.fill", "keyVerse": 3 },
+      { "title": "Delight", "summary": "God's word is something to enjoy and return to day and night, not a chore.", "symbol": "sun.max.fill", "keyVerse": 2 },
+      { "title": "Wise company", "summary": "Whose counsel we walk, stand and sit in shapes who we become.", "symbol": "person.2.fill", "keyVerse": 1 }
+    ],
+    "takeaways": ["Rootedness", "Delight", "Daily rhythm", "Wise company", "Fruitfulness"],
+    "questions": [
+      {
+        "id": "psa1-q1",
+        "prompt": "Whose \"counsel\" has been shaping your thoughts most this week?",
+        "choices": ["News & social feeds", "Friends & family", "Work", "Scripture & prayer"]
+      },
+      {
+        "id": "psa1-q2",
+        "prompt": "What would it look like to be \"planted by the rivers of water\" tomorrow morning?"
+      },
+      {
+        "id": "psa1-q3",
+        "prompt": "Name one habit that feels like chaff — something you could let the wind carry away."
+      }
+    ]
+  },
+  "PSA.23": {
+    "title": "The Lord Is My Shepherd",
+    "palette": "meadow",
+    "themes": [
+      { "title": "Provision", "summary": "With the Lord as shepherd, there is nothing essential we lack.", "symbol": "basket.fill", "keyVerse": 1 },
+      { "title": "Rest", "summary": "He leads us to green pastures and still waters, and restores the soul.", "symbol": "moon.zzz.fill", "keyVerse": 2 },
+      { "title": "Presence", "summary": "Even in the darkest valley, we are not alone: thou art with me.", "symbol": "heart.circle.fill", "keyVerse": 4 }
+    ],
+    "takeaways": ["Provision", "Rest", "Courage", "Presence", "Abundance"],
+    "questions": [
+      {
+        "id": "psa23-q1",
+        "prompt": "Which image speaks to where you are today?",
+        "choices": ["Green pastures", "Still waters", "The valley", "An overflowing cup"]
+      },
+      {
+        "id": "psa23-q2",
+        "prompt": "Where do you need your soul \"restored\" right now?"
+      },
+      {
+        "id": "psa23-q3",
+        "prompt": "Recall one moment this week when goodness or mercy followed you."
+      }
+    ]
+  },
+  "PSA.46": {
+    "title": "Be Still",
+    "palette": "ocean",
+    "themes": [
+      { "title": "Refuge", "summary": "God is a very present help when everything else is shaking.", "symbol": "shield.fill", "keyVerse": 1 },
+      { "title": "Stillness", "summary": "Stop striving, and remember who God is.", "symbol": "water.waves", "keyVerse": 10 },
+      { "title": "Steadiness", "summary": "With God in the midst, the city shall not be moved.", "symbol": "mountain.2.fill", "keyVerse": 5 }
+    ],
+    "takeaways": ["Refuge", "Stillness", "Steadiness", "Trust", "Peace"],
+    "questions": [
+      {
+        "id": "psa46-q1",
+        "prompt": "What \"roaring waters\" are loudest in your life right now?",
+        "choices": ["Work pressure", "Relationships", "Health", "The world's news"]
+      },
+      {
+        "id": "psa46-q2",
+        "prompt": "When could you practice five minutes of being still today?",
+        "choices": ["Morning", "Midday", "Evening", "Before sleep"]
+      },
+      {
+        "id": "psa46-q3",
+        "prompt": "Write one sentence of trust to return to when things shake."
+      }
+    ]
+  },
+  "PSA.121": {
+    "title": "My Help Cometh",
+    "palette": "dusk",
+    "themes": [
+      { "title": "Help", "summary": "Our help comes from the Maker of heaven and earth.", "symbol": "hand.raised.fill", "keyVerse": 2 },
+      { "title": "Watchfulness", "summary": "The one who keeps you never slumbers or sleeps.", "symbol": "eye.fill", "keyVerse": 3 },
+      { "title": "Journey", "summary": "Your going out and coming in are kept, today and always.", "symbol": "figure.walk", "keyVerse": 8 }
+    ],
+    "takeaways": ["Help", "Protection", "Watchfulness", "Journey", "Security"],
+    "questions": [
+      {
+        "id": "psa121-q1",
+        "prompt": "Where do you usually look first when you need help?",
+        "choices": ["My phone", "Other people", "Myself", "God"]
+      },
+      {
+        "id": "psa121-q2",
+        "prompt": "What \"going out\" or \"coming in\" are you facing this week?"
+      }
+    ]
+  }
+}

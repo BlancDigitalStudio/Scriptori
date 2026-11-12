@@ -1,0 +1,1296 @@
+{
+  "translation": "KJV",
+  "books": [
+    {
+      "id": "GEN",
+      "name": "Genesis",
+      "testament": "old",
+      "category": "Law",
+      "palette": "dawn",
+      "level": 1,
+      "chapterCount": 50,
+      "minutesPerDay": 4,
+      "blurb": "Where everything begins: creation, the first families, and God's promise to Abraham.",
+      "themes": [
+        "Creation",
+        "Promise",
+        "Family"
+      ],
+      "intents": [
+        "understand",
+        "habit"
+      ]
+    },
+    {
+      "id": "EXO",
+      "name": "Exodus",
+      "testament": "old",
+      "category": "Law",
+      "palette": "ember",
+      "level": 2,
+      "chapterCount": 40,
+      "minutesPerDay": 4,
+      "blurb": "God hears a people in slavery, leads them out, and meets them in the wilderness.",
+      "themes": [
+        "Deliverance",
+        "Covenant",
+        "Presence"
+      ],
+      "intents": [
+        "understand",
+        "hardSeason"
+      ]
+    },
+    {
+      "id": "LEV",
+      "name": "Leviticus",
+      "testament": "old",
+      "category": "Law",
+      "palette": "paper",
+      "level": 3,
+      "chapterCount": 27,
+      "minutesPerDay": 5,
+      "blurb": "Instructions for worship and holy living for a people God dwells among.",
+      "themes": [
+        "Holiness",
+        "Worship",
+        "Atonement"
+      ],
+      "intents": [
+        "understand"
+      ]
+    },
+    {
+      "id": "NUM",
+      "name": "Numbers",
+      "testament": "old",
+      "category": "Law",
+      "palette": "dusk",
+      "level": 3,
+      "chapterCount": 36,
+      "minutesPerDay": 5,
+      "blurb": "Forty years in the wilderness: grumbling, grace, and God's steady leading.",
+      "themes": [
+        "Wilderness",
+        "Faithfulness",
+        "Guidance"
+      ],
+      "intents": [
+        "understand"
+      ]
+    },
+    {
+      "id": "DEU",
+      "name": "Deuteronomy",
+      "testament": "old",
+      "category": "Law",
+      "palette": "meadow",
+      "level": 2,
+      "chapterCount": 34,
+      "minutesPerDay": 4,
+      "blurb": "Moses' farewell sermons, calling a new generation to love God with all their heart.",
+      "themes": [
+        "Remembering",
+        "Love",
+        "Obedience"
+      ],
+      "intents": [
+        "understand",
+        "grow"
+      ]
+    },
+    {
+      "id": "JOS",
+      "name": "Joshua",
+      "testament": "old",
+      "category": "History",
+      "palette": "ember",
+      "level": 2,
+      "chapterCount": 24,
+      "minutesPerDay": 4,
+      "blurb": "Be strong and of good courage: Israel enters the promised land.",
+      "themes": [
+        "Courage",
+        "Promise",
+        "Faithfulness"
+      ],
+      "intents": [
+        "grow",
+        "hardSeason"
+      ]
+    },
+    {
+      "id": "JDG",
+      "name": "Judges",
+      "testament": "old",
+      "category": "History",
+      "palette": "dusk",
+      "level": 3,
+      "chapterCount": 21,
+      "minutesPerDay": 5,
+      "blurb": "A restless people, a patient God, and a series of unlikely deliverers.",
+      "themes": [
+        "Cycles",
+        "Deliverance",
+        "Mercy"
+      ],
+      "intents": [
+        "understand"
+      ]
+    },
+    {
+      "id": "RUT",
+      "name": "Ruth",
+      "testament": "old",
+      "category": "History",
+      "palette": "meadow",
+      "level": 1,
+      "chapterCount": 4,
+      "minutesPerDay": 3,
+      "blurb": "A short story of loss, loyalty, and quiet redemption in hard times.",
+      "themes": [
+        "Loyalty",
+        "Kindness",
+        "Redemption"
+      ],
+      "intents": [
+        "hardSeason",
+        "peace"
+      ]
+    },
+    {
+      "id": "1SA",
+      "name": "1 Samuel",
+      "testament": "old",
+      "category": "History",
+      "palette": "dawn",
+      "level": 2,
+      "chapterCount": 31,
+      "minutesPerDay": 4,
+      "blurb": "From Hannah's prayer to David's rise: God looks on the heart.",
+      "themes": [
+        "Calling",
+        "Humility",
+        "The heart"
+      ],
+      "intents": [
+        "understand",
+        "grow"
+      ]
+    },
+    {
+      "id": "2SA",
+      "name": "2 Samuel",
+      "testament": "old",
+      "category": "History",
+      "palette": "ember",
+      "level": 2,
+      "chapterCount": 24,
+      "minutesPerDay": 4,
+      "blurb": "King David's reign, his great failure, and God's enduring promise.",
+      "themes": [
+        "Kingship",
+        "Failure",
+        "Repentance"
+      ],
+      "intents": [
+        "understand"
+      ]
+    },
+    {
+      "id": "1KI",
+      "name": "1 Kings",
+      "testament": "old",
+      "category": "History",
+      "palette": "ocean",
+      "level": 2,
+      "chapterCount": 22,
+      "minutesPerDay": 6,
+      "blurb": "Solomon's wisdom, a divided kingdom, and Elijah's bold faith.",
+      "themes": [
+        "Wisdom",
+        "Idolatry",
+        "Prophets"
+      ],
+      "intents": [
+        "understand"
+      ]
+    },
+    {
+      "id": "2KI",
+      "name": "2 Kings",
+      "testament": "old",
+      "category": "History",
+      "palette": "dusk",
+      "level": 3,
+      "chapterCount": 25,
+      "minutesPerDay": 5,
+      "blurb": "Kings rise and fall while prophets call the people back to God.",
+      "themes": [
+        "Faithfulness",
+        "Judgment",
+        "Hope"
+      ],
+      "intents": [
+        "understand"
+      ]
+    },
+    {
+      "id": "1CH",
+      "name": "1 Chronicles",
+      "testament": "old",
+      "category": "History",
+      "palette": "paper",
+      "level": 3,
+      "chapterCount": 29,
+      "minutesPerDay": 4,
+      "blurb": "Israel's story retold with David and worship at the center.",
+      "themes": [
+        "Worship",
+        "Heritage",
+        "Promise"
+      ],
+      "intents": [
+        "understand"
+      ]
+    },
+    {
+      "id": "2CH",
+      "name": "2 Chronicles",
+      "testament": "old",
+      "category": "History",
+      "palette": "paper",
+      "level": 3,
+      "chapterCount": 36,
+      "minutesPerDay": 4,
+      "blurb": "The temple, the kings of Judah, and the revivals that followed humble prayer.",
+      "themes": [
+        "Revival",
+        "Prayer",
+        "Temple"
+      ],
+      "intents": [
+        "understand"
+      ]
+    },
+    {
+      "id": "EZR",
+      "name": "Ezra",
+      "testament": "old",
+      "category": "History",
+      "palette": "meadow",
+      "level": 2,
+      "chapterCount": 10,
+      "minutesPerDay": 4,
+      "blurb": "Exiles return home to rebuild the temple and recommit to God's word.",
+      "themes": [
+        "Return",
+        "Rebuilding",
+        "Scripture"
+      ],
+      "intents": [
+        "grow"
+      ]
+    },
+    {
+      "id": "NEH",
+      "name": "Nehemiah",
+      "testament": "old",
+      "category": "History",
+      "palette": "ember",
+      "level": 2,
+      "chapterCount": 13,
+      "minutesPerDay": 4,
+      "blurb": "A prayerful leader rebuilds Jerusalem's walls against the odds.",
+      "themes": [
+        "Prayer",
+        "Rebuilding",
+        "Perseverance"
+      ],
+      "intents": [
+        "grow",
+        "habit"
+      ]
+    },
+    {
+      "id": "EST",
+      "name": "Esther",
+      "testament": "old",
+      "category": "History",
+      "palette": "dusk",
+      "level": 1,
+      "chapterCount": 10,
+      "minutesPerDay": 3,
+      "blurb": "For such a time as this: a queen risks everything for her people.",
+      "themes": [
+        "Courage",
+        "Providence",
+        "Purpose"
+      ],
+      "intents": [
+        "hardSeason",
+        "grow"
+      ]
+    },
+    {
+      "id": "JOB",
+      "name": "Job",
+      "testament": "old",
+      "category": "Wisdom",
+      "palette": "ocean",
+      "level": 2,
+      "chapterCount": 42,
+      "minutesPerDay": 2,
+      "blurb": "An honest wrestling with suffering, and the God who answers from the whirlwind.",
+      "themes": [
+        "Suffering",
+        "Honesty",
+        "Trust"
+      ],
+      "intents": [
+        "hardSeason"
+      ]
+    },
+    {
+      "id": "PSA",
+      "name": "Psalms",
+      "testament": "old",
+      "category": "Psalms",
+      "palette": "meadow",
+      "level": 1,
+      "chapterCount": 150,
+      "minutesPerDay": 1,
+      "blurb": "150 songs and prayers for every season of the heart, from lament to praise.",
+      "themes": [
+        "Prayer",
+        "Comfort",
+        "Praise"
+      ],
+      "intents": [
+        "peace",
+        "hardSeason",
+        "habit"
+      ]
+    },
+    {
+      "id": "PRO",
+      "name": "Proverbs",
+      "testament": "old",
+      "category": "Wisdom",
+      "palette": "dawn",
+      "level": 1,
+      "chapterCount": 31,
+      "minutesPerDay": 2,
+      "blurb": "Short, practical wisdom for everyday choices, one chapter for each day of the month.",
+      "themes": [
+        "Wisdom",
+        "Words",
+        "Character"
+      ],
+      "intents": [
+        "habit",
+        "grow"
+      ]
+    },
+    {
+      "id": "ECC",
+      "name": "Ecclesiastes",
+      "testament": "old",
+      "category": "Wisdom",
+      "palette": "paper",
+      "level": 2,
+      "chapterCount": 12,
+      "minutesPerDay": 2,
+      "blurb": "A searching look at life's meaning: a time for everything under the sun.",
+      "themes": [
+        "Meaning",
+        "Seasons",
+        "Contentment"
+      ],
+      "intents": [
+        "hardSeason",
+        "understand"
+      ]
+    },
+    {
+      "id": "SNG",
+      "name": "Song of Solomon",
+      "testament": "old",
+      "category": "Wisdom",
+      "palette": "ember",
+      "level": 3,
+      "chapterCount": 8,
+      "minutesPerDay": 2,
+      "blurb": "A poetic celebration of love and longing.",
+      "themes": [
+        "Love",
+        "Delight",
+        "Devotion"
+      ],
+      "intents": [
+        "understand"
+      ]
+    },
+    {
+      "id": "ISA",
+      "name": "Isaiah",
+      "testament": "old",
+      "category": "Prophets",
+      "palette": "ocean",
+      "level": 2,
+      "chapterCount": 66,
+      "minutesPerDay": 3,
+      "blurb": "Visions of judgment and sweeping comfort: they that wait upon the LORD shall renew their strength.",
+      "themes": [
+        "Comfort",
+        "Holiness",
+        "Messiah"
+      ],
+      "intents": [
+        "hardSeason",
+        "understand"
+      ]
+    },
+    {
+      "id": "JER",
+      "name": "Jeremiah",
+      "testament": "old",
+      "category": "Prophets",
+      "palette": "dusk",
+      "level": 3,
+      "chapterCount": 52,
+      "minutesPerDay": 4,
+      "blurb": "A weeping prophet speaks hard truth and a promise of a new heart.",
+      "themes": [
+        "Lament",
+        "Faithfulness",
+        "New covenant"
+      ],
+      "intents": [
+        "hardSeason"
+      ]
+    },
+    {
+      "id": "LAM",
+      "name": "Lamentations",
+      "testament": "old",
+      "category": "Prophets",
+      "palette": "dusk",
+      "level": 2,
+      "chapterCount": 5,
+      "minutesPerDay": 3,
+      "blurb": "Five poems of grief, with hope at the center: his compassions fail not.",
+      "themes": [
+        "Grief",
+        "Mercy",
+        "Hope"
+      ],
+      "intents": [
+        "hardSeason"
+      ]
+    },
+    {
+      "id": "EZK",
+      "name": "Ezekiel",
+      "testament": "old",
+      "category": "Prophets",
+      "palette": "ocean",
+      "level": 3,
+      "chapterCount": 48,
+      "minutesPerDay": 4,
+      "blurb": "Strange visions, dry bones, and the promise of a new spirit.",
+      "themes": [
+        "Glory",
+        "Restoration",
+        "New heart"
+      ],
+      "intents": [
+        "understand"
+      ]
+    },
+    {
+      "id": "DAN",
+      "name": "Daniel",
+      "testament": "old",
+      "category": "Prophets",
+      "palette": "ember",
+      "level": 2,
+      "chapterCount": 12,
+      "minutesPerDay": 5,
+      "blurb": "Staying faithful in a foreign land, from the lions' den to visions of the future.",
+      "themes": [
+        "Faithfulness",
+        "Courage",
+        "Sovereignty"
+      ],
+      "intents": [
+        "grow",
+        "hardSeason"
+      ]
+    },
+    {
+      "id": "HOS",
+      "name": "Hosea",
+      "testament": "old",
+      "category": "Prophets",
+      "palette": "dusk",
+      "level": 2,
+      "chapterCount": 14,
+      "minutesPerDay": 2,
+      "blurb": "A prophet's marriage pictures God's relentless love for an unfaithful people.",
+      "themes": [
+        "Faithful love",
+        "Return",
+        "Mercy"
+      ],
+      "intents": [
+        "understand"
+      ]
+    },
+    {
+      "id": "JOL",
+      "name": "Joel",
+      "testament": "old",
+      "category": "Prophets",
+      "palette": "ember",
+      "level": 2,
+      "chapterCount": 3,
+      "minutesPerDay": 3,
+      "blurb": "After disaster, a call to return and a promise of the Spirit poured out.",
+      "themes": [
+        "Repentance",
+        "Restoration",
+        "Spirit"
+      ],
+      "intents": [
+        "understand"
+      ]
+    },
+    {
+      "id": "AMO",
+      "name": "Amos",
+      "testament": "old",
+      "category": "Prophets",
+      "palette": "paper",
+      "level": 2,
+      "chapterCount": 9,
+      "minutesPerDay": 2,
+      "blurb": "Let justice roll down: a shepherd confronts comfortable religion.",
+      "themes": [
+        "Justice",
+        "Worship",
+        "Righteousness"
+      ],
+      "intents": [
+        "understand",
+        "grow"
+      ]
+    },
+    {
+      "id": "OBA",
+      "name": "Obadiah",
+      "testament": "old",
+      "category": "Prophets",
+      "palette": "paper",
+      "level": 3,
+      "chapterCount": 1,
+      "minutesPerDay": 3,
+      "blurb": "The shortest Old Testament book, on pride and God's justice.",
+      "themes": [
+        "Pride",
+        "Justice",
+        "Kingdom"
+      ],
+      "intents": [
+        "understand"
+      ]
+    },
+    {
+      "id": "JON",
+      "name": "Jonah",
+      "testament": "old",
+      "category": "Prophets",
+      "palette": "ocean",
+      "level": 1,
+      "chapterCount": 4,
+      "minutesPerDay": 2,
+      "blurb": "A reluctant prophet, a great fish, and a God whose mercy is wider than ours.",
+      "themes": [
+        "Second chances",
+        "Mercy",
+        "Calling"
+      ],
+      "intents": [
+        "grow",
+        "understand"
+      ]
+    },
+    {
+      "id": "MIC",
+      "name": "Micah",
+      "testament": "old",
+      "category": "Prophets",
+      "palette": "meadow",
+      "level": 2,
+      "chapterCount": 7,
+      "minutesPerDay": 2,
+      "blurb": "Do justly, love mercy, and walk humbly with thy God.",
+      "themes": [
+        "Justice",
+        "Mercy",
+        "Humility"
+      ],
+      "intents": [
+        "grow"
+      ]
+    },
+    {
+      "id": "NAM",
+      "name": "Nahum",
+      "testament": "old",
+      "category": "Prophets",
+      "palette": "dusk",
+      "level": 3,
+      "chapterCount": 3,
+      "minutesPerDay": 2,
+      "blurb": "God's justice toward Nineveh, and a stronghold in the day of trouble.",
+      "themes": [
+        "Justice",
+        "Refuge",
+        "Sovereignty"
+      ],
+      "intents": [
+        "understand"
+      ]
+    },
+    {
+      "id": "HAB",
+      "name": "Habakkuk",
+      "testament": "old",
+      "category": "Prophets",
+      "palette": "ocean",
+      "level": 2,
+      "chapterCount": 3,
+      "minutesPerDay": 2,
+      "blurb": "A prophet brings honest questions to God and learns to rejoice anyway.",
+      "themes": [
+        "Questions",
+        "Waiting",
+        "Trust"
+      ],
+      "intents": [
+        "hardSeason"
+      ]
+    },
+    {
+      "id": "ZEP",
+      "name": "Zephaniah",
+      "testament": "old",
+      "category": "Prophets",
+      "palette": "paper",
+      "level": 3,
+      "chapterCount": 3,
+      "minutesPerDay": 3,
+      "blurb": "Warning and hope: the LORD rejoices over thee with singing.",
+      "themes": [
+        "Day of the LORD",
+        "Humility",
+        "Joy"
+      ],
+      "intents": [
+        "understand"
+      ]
+    },
+    {
+      "id": "HAG",
+      "name": "Haggai",
+      "testament": "old",
+      "category": "Prophets",
+      "palette": "ember",
+      "level": 2,
+      "chapterCount": 2,
+      "minutesPerDay": 3,
+      "blurb": "Consider your ways: a short call to put first things first.",
+      "themes": [
+        "Priorities",
+        "Rebuilding",
+        "Presence"
+      ],
+      "intents": [
+        "grow",
+        "habit"
+      ]
+    },
+    {
+      "id": "ZEC",
+      "name": "Zechariah",
+      "testament": "old",
+      "category": "Prophets",
+      "palette": "dawn",
+      "level": 3,
+      "chapterCount": 14,
+      "minutesPerDay": 2,
+      "blurb": "Night visions and promises of a coming, humble king.",
+      "themes": [
+        "Restoration",
+        "Visions",
+        "King"
+      ],
+      "intents": [
+        "understand"
+      ]
+    },
+    {
+      "id": "MAL",
+      "name": "Malachi",
+      "testament": "old",
+      "category": "Prophets",
+      "palette": "paper",
+      "level": 2,
+      "chapterCount": 4,
+      "minutesPerDay": 2,
+      "blurb": "The Old Testament's closing word, calling hearts back to God.",
+      "themes": [
+        "Faithfulness",
+        "Worship",
+        "Preparation"
+      ],
+      "intents": [
+        "understand"
+      ]
+    },
+    {
+      "id": "MAT",
+      "name": "Matthew",
+      "testament": "new",
+      "category": "Gospels",
+      "palette": "dawn",
+      "level": 1,
+      "chapterCount": 28,
+      "minutesPerDay": 4,
+      "blurb": "Jesus as the promised King, including the Sermon on the Mount.",
+      "themes": [
+        "Kingdom",
+        "Teaching",
+        "Fulfillment"
+      ],
+      "intents": [
+        "understand",
+        "grow"
+      ]
+    },
+    {
+      "id": "MRK",
+      "name": "Mark",
+      "testament": "new",
+      "category": "Gospels",
+      "palette": "ember",
+      "level": 1,
+      "chapterCount": 16,
+      "minutesPerDay": 5,
+      "blurb": "The shortest, fastest-moving account of Jesus' life. A great first book.",
+      "themes": [
+        "Action",
+        "Discipleship",
+        "The cross"
+      ],
+      "intents": [
+        "understand",
+        "habit"
+      ]
+    },
+    {
+      "id": "LUK",
+      "name": "Luke",
+      "testament": "new",
+      "category": "Gospels",
+      "palette": "meadow",
+      "level": 1,
+      "chapterCount": 24,
+      "minutesPerDay": 5,
+      "blurb": "A careful account of Jesus' life, full of grace for the overlooked.",
+      "themes": [
+        "Compassion",
+        "Outsiders",
+        "Joy"
+      ],
+      "intents": [
+        "understand",
+        "peace"
+      ]
+    },
+    {
+      "id": "JHN",
+      "name": "John",
+      "testament": "new",
+      "category": "Gospels",
+      "palette": "ocean",
+      "level": 1,
+      "chapterCount": 21,
+      "minutesPerDay": 5,
+      "blurb": "Written that ye might believe: the life of Jesus through signs and conversations.",
+      "themes": [
+        "Belief",
+        "Life",
+        "Love"
+      ],
+      "intents": [
+        "peace",
+        "understand",
+        "grow"
+      ]
+    },
+    {
+      "id": "ACT",
+      "name": "Acts",
+      "testament": "new",
+      "category": "History",
+      "palette": "ember",
+      "level": 1,
+      "chapterCount": 28,
+      "minutesPerDay": 4,
+      "blurb": "The early church spreads from Jerusalem to Rome, powered by the Spirit.",
+      "themes": [
+        "Spirit",
+        "Church",
+        "Witness"
+      ],
+      "intents": [
+        "grow",
+        "understand"
+      ]
+    },
+    {
+      "id": "ROM",
+      "name": "Romans",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "dusk",
+      "level": 2,
+      "chapterCount": 16,
+      "minutesPerDay": 3,
+      "blurb": "Paul's fullest explanation of the gospel: grace, faith, and life in the Spirit.",
+      "themes": [
+        "Grace",
+        "Faith",
+        "New life"
+      ],
+      "intents": [
+        "understand",
+        "grow"
+      ]
+    },
+    {
+      "id": "1CO",
+      "name": "1 Corinthians",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "dawn",
+      "level": 2,
+      "chapterCount": 16,
+      "minutesPerDay": 3,
+      "blurb": "Practical help for a messy church, including the great chapter on love.",
+      "themes": [
+        "Love",
+        "Unity",
+        "Resurrection"
+      ],
+      "intents": [
+        "grow"
+      ]
+    },
+    {
+      "id": "2CO",
+      "name": "2 Corinthians",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "ocean",
+      "level": 2,
+      "chapterCount": 13,
+      "minutesPerDay": 2,
+      "blurb": "Strength made perfect in weakness, from Paul's most personal letter.",
+      "themes": [
+        "Weakness",
+        "Comfort",
+        "Generosity"
+      ],
+      "intents": [
+        "hardSeason",
+        "grow"
+      ]
+    },
+    {
+      "id": "GAL",
+      "name": "Galatians",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "ember",
+      "level": 2,
+      "chapterCount": 6,
+      "minutesPerDay": 3,
+      "blurb": "A short, passionate letter about freedom in Christ and the fruit of the Spirit.",
+      "themes": [
+        "Freedom",
+        "Grace",
+        "Spirit"
+      ],
+      "intents": [
+        "grow",
+        "understand"
+      ]
+    },
+    {
+      "id": "EPH",
+      "name": "Ephesians",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "ocean",
+      "level": 1,
+      "chapterCount": 6,
+      "minutesPerDay": 3,
+      "blurb": "Who you are in Christ, and how to walk in love.",
+      "themes": [
+        "Identity",
+        "Grace",
+        "Unity"
+      ],
+      "intents": [
+        "grow",
+        "peace"
+      ]
+    },
+    {
+      "id": "PHP",
+      "name": "Philippians",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "ember",
+      "level": 1,
+      "chapterCount": 4,
+      "minutesPerDay": 3,
+      "blurb": "A joyful letter written from prison: peace over anxiety and contentment in every state.",
+      "themes": [
+        "Joy",
+        "Peace",
+        "Contentment"
+      ],
+      "intents": [
+        "peace",
+        "hardSeason",
+        "habit"
+      ]
+    },
+    {
+      "id": "COL",
+      "name": "Colossians",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "meadow",
+      "level": 1,
+      "chapterCount": 4,
+      "minutesPerDay": 2,
+      "blurb": "Christ at the center of everything, and a life that flows from him.",
+      "themes": [
+        "Christ above all",
+        "New self",
+        "Gratitude"
+      ],
+      "intents": [
+        "grow",
+        "understand"
+      ]
+    },
+    {
+      "id": "1TH",
+      "name": "1 Thessalonians",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "dawn",
+      "level": 1,
+      "chapterCount": 5,
+      "minutesPerDay": 2,
+      "blurb": "Warm encouragement for a young church: rejoice evermore, pray without ceasing.",
+      "themes": [
+        "Hope",
+        "Encouragement",
+        "Holiness"
+      ],
+      "intents": [
+        "grow",
+        "hardSeason"
+      ]
+    },
+    {
+      "id": "2TH",
+      "name": "2 Thessalonians",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "dusk",
+      "level": 2,
+      "chapterCount": 3,
+      "minutesPerDay": 2,
+      "blurb": "Stand firm and keep doing good while you wait.",
+      "themes": [
+        "Perseverance",
+        "Hope",
+        "Faithfulness"
+      ],
+      "intents": [
+        "grow"
+      ]
+    },
+    {
+      "id": "1TI",
+      "name": "1 Timothy",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "paper",
+      "level": 2,
+      "chapterCount": 6,
+      "minutesPerDay": 2,
+      "blurb": "Paul mentors a young leader on faith, character, and community.",
+      "themes": [
+        "Leadership",
+        "Godliness",
+        "Contentment"
+      ],
+      "intents": [
+        "grow"
+      ]
+    },
+    {
+      "id": "2TI",
+      "name": "2 Timothy",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "ember",
+      "level": 2,
+      "chapterCount": 4,
+      "minutesPerDay": 2,
+      "blurb": "Paul's last letter: fight the good fight, finish the course, keep the faith.",
+      "themes": [
+        "Endurance",
+        "Scripture",
+        "Legacy"
+      ],
+      "intents": [
+        "grow",
+        "hardSeason"
+      ]
+    },
+    {
+      "id": "TIT",
+      "name": "Titus",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "paper",
+      "level": 2,
+      "chapterCount": 3,
+      "minutesPerDay": 1,
+      "blurb": "Grace that teaches us to live well, in three short chapters.",
+      "themes": [
+        "Good works",
+        "Grace",
+        "Sound teaching"
+      ],
+      "intents": [
+        "grow"
+      ]
+    },
+    {
+      "id": "PHM",
+      "name": "Philemon",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "meadow",
+      "level": 1,
+      "chapterCount": 1,
+      "minutesPerDay": 2,
+      "blurb": "A one-chapter letter asking a master to welcome back a runaway as a brother.",
+      "themes": [
+        "Reconciliation",
+        "Brotherhood",
+        "Grace"
+      ],
+      "intents": [
+        "grow"
+      ]
+    },
+    {
+      "id": "HEB",
+      "name": "Hebrews",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "dusk",
+      "level": 2,
+      "chapterCount": 13,
+      "minutesPerDay": 3,
+      "blurb": "Jesus, greater than all, and a great cloud of witnesses cheering you on.",
+      "themes": [
+        "Faith",
+        "Endurance",
+        "Jesus our priest"
+      ],
+      "intents": [
+        "grow",
+        "hardSeason"
+      ]
+    },
+    {
+      "id": "JAS",
+      "name": "James",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "dawn",
+      "level": 1,
+      "chapterCount": 5,
+      "minutesPerDay": 2,
+      "blurb": "Practical, punchy wisdom: be doers of the word, not hearers only.",
+      "themes": [
+        "Faith in action",
+        "Wisdom",
+        "Words"
+      ],
+      "intents": [
+        "habit",
+        "grow"
+      ]
+    },
+    {
+      "id": "1PE",
+      "name": "1 Peter",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "ocean",
+      "level": 1,
+      "chapterCount": 5,
+      "minutesPerDay": 2,
+      "blurb": "Living hope for people under pressure: cast all your care upon him.",
+      "themes": [
+        "Hope",
+        "Suffering",
+        "Identity"
+      ],
+      "intents": [
+        "hardSeason",
+        "peace"
+      ]
+    },
+    {
+      "id": "2PE",
+      "name": "2 Peter",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "dusk",
+      "level": 2,
+      "chapterCount": 3,
+      "minutesPerDay": 3,
+      "blurb": "Add to your faith virtue, knowledge, and love, and grow in grace.",
+      "themes": [
+        "Growth",
+        "Truth",
+        "Patience"
+      ],
+      "intents": [
+        "grow"
+      ]
+    },
+    {
+      "id": "1JN",
+      "name": "1 John",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "meadow",
+      "level": 1,
+      "chapterCount": 5,
+      "minutesPerDay": 3,
+      "blurb": "God is love: a gentle letter on assurance and loving one another.",
+      "themes": [
+        "Love",
+        "Assurance",
+        "Light"
+      ],
+      "intents": [
+        "peace",
+        "grow"
+      ]
+    },
+    {
+      "id": "2JN",
+      "name": "2 John",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "paper",
+      "level": 2,
+      "chapterCount": 1,
+      "minutesPerDay": 1,
+      "blurb": "A one-chapter note on walking in truth and love.",
+      "themes": [
+        "Truth",
+        "Love",
+        "Discernment"
+      ],
+      "intents": [
+        "grow"
+      ]
+    },
+    {
+      "id": "3JN",
+      "name": "3 John",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "paper",
+      "level": 2,
+      "chapterCount": 1,
+      "minutesPerDay": 1,
+      "blurb": "A one-chapter note commending hospitality and faithfulness.",
+      "themes": [
+        "Hospitality",
+        "Faithfulness",
+        "Good example"
+      ],
+      "intents": [
+        "grow"
+      ]
+    },
+    {
+      "id": "JUD",
+      "name": "Jude",
+      "testament": "new",
+      "category": "Letters",
+      "palette": "ember",
+      "level": 2,
+      "chapterCount": 1,
+      "minutesPerDay": 3,
+      "blurb": "Keep yourselves in the love of God, kept by him who is able.",
+      "themes": [
+        "Contending",
+        "Mercy",
+        "Keeping"
+      ],
+      "intents": [
+        "grow"
+      ]
+    },
+    {
+      "id": "REV",
+      "name": "Revelation",
+      "testament": "new",
+      "category": "Prophecy",
+      "palette": "dusk",
+      "level": 3,
+      "chapterCount": 22,
+      "minutesPerDay": 3,
+      "blurb": "Visions of the risen Christ and a new heaven and earth where tears are wiped away.",
+      "themes": [
+        "Victory",
+        "Worship",
+        "New creation"
+      ],
+      "intents": [
+        "understand",
+        "hardSeason"
+      ]
+    }
+  ]
+}

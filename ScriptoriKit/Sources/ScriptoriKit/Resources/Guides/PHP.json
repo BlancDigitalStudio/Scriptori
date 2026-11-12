@@ -1,0 +1,95 @@
+{
+  "PHP.1": {
+    "title": "To Live Is Christ",
+    "themes": [
+      { "title": "Confidence", "summary": "God finishes the good work he begins in us.", "symbol": "checkmark.seal.fill", "keyVerse": 6 },
+      { "title": "Partnership", "summary": "Paul's joy comes from friends who share the work of the gospel with him.", "symbol": "person.2.fill", "keyVerse": 5 },
+      { "title": "Purpose", "summary": "For to me to live is Christ, and to die is gain.", "symbol": "heart.fill", "keyVerse": 21 }
+    ],
+    "takeaways": ["Confidence", "Partnership", "Purpose", "Joy in hardship", "Prayer"],
+    "questions": [
+      {
+        "id": "php1-q1",
+        "prompt": "What \"good work\" do you hope God is finishing in you?",
+        "choices": ["Patience", "Courage", "Kindness", "Faith"]
+      },
+      {
+        "id": "php1-q2",
+        "prompt": "Paul turns prison into an opportunity. What hard situation could become one for you?"
+      },
+      {
+        "id": "php1-q3",
+        "prompt": "Who is a partner in your faith you could thank this week?"
+      }
+    ]
+  },
+  "PHP.2": {
+    "title": "The Mind of Christ",
+    "themes": [
+      { "title": "Humility", "summary": "Count others more significant than yourself, and look to their interests too.", "symbol": "arrow.down.heart.fill", "keyVerse": 3 },
+      { "title": "The mind of Christ", "summary": "Jesus emptied himself and became a servant; let that mind be in you.", "symbol": "figure.and.child.holdinghands", "keyVerse": 5 },
+      { "title": "Shining", "summary": "Without murmuring, shine as lights in the world.", "symbol": "sparkles", "keyVerse": 15 }
+    ],
+    "takeaways": ["Humility", "Service", "Unity", "The mind of Christ", "Shining"],
+    "questions": [
+      {
+        "id": "php2-q1",
+        "prompt": "Whose interests could you look out for this week?",
+        "choices": ["Family", "A friend", "A coworker", "A stranger"]
+      },
+      {
+        "id": "php2-q2",
+        "prompt": "Where is it hardest for you to do things \"without murmurings and disputings\"?"
+      },
+      {
+        "id": "php2-q3",
+        "prompt": "What would one small act of serving look like tomorrow?"
+      }
+    ]
+  },
+  "PHP.3": {
+    "title": "Pressing On",
+    "themes": [
+      { "title": "Knowing Christ", "summary": "Paul counts everything else as loss next to knowing Jesus.", "symbol": "heart.text.square.fill", "keyVerse": 8 },
+      { "title": "Pressing on", "summary": "Forget what is behind and reach toward what is ahead.", "symbol": "figure.run", "keyVerse": 14 },
+      { "title": "True citizenship", "summary": "Our citizenship is in heaven, and that changes how we live now.", "symbol": "house.fill", "keyVerse": 20 }
+    ],
+    "takeaways": ["Knowing Christ", "Pressing on", "Letting go", "Grace over effort", "Hope"],
+    "questions": [
+      {
+        "id": "php3-q1",
+        "prompt": "What is one thing behind you that you need to stop carrying?",
+        "choices": ["A mistake", "A regret", "An old success", "Someone's opinion"]
+      },
+      {
+        "id": "php3-q2",
+        "prompt": "What would \"pressing toward the mark\" look like for you this week?"
+      }
+    ]
+  },
+  "PHP.4": {
+    "title": "Rejoice in the Lord",
+    "palette": "ember",
+    "themes": [
+      { "title": "Joy", "summary": "Rejoice in the Lord always, and again, rejoice.", "symbol": "sun.max.fill", "keyVerse": 4 },
+      { "title": "Peace over anxiety", "summary": "Turn worry into prayer, and the peace of God will keep your heart and mind.", "symbol": "leaf.fill", "keyVerse": 6 },
+      { "title": "Contentment", "summary": "Paul has learned to be content whether he has much or little.", "symbol": "cup.and.saucer.fill", "keyVerse": 11 }
+    ],
+    "takeaways": ["Joy", "Peace over anxiety", "Contentment", "Gratitude", "Strength"],
+    "questions": [
+      {
+        "id": "php4-q1",
+        "prompt": "What is one worry you can turn into a prayer right now?"
+      },
+      {
+        "id": "php4-q2",
+        "prompt": "Verse 8 lists what to \"think on.\" Which one does your scrolling feed need most?",
+        "choices": ["True", "Pure", "Lovely", "Of good report"]
+      },
+      {
+        "id": "php4-q3",
+        "prompt": "Where are you learning contentment — or still struggling to?"
+      }
+    ]
+  }
+}
