@@ -1,0 +1,115 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
+  "identifier" : "BB31513E-CCC3-4C06-8784-AAAC6F26E81E",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_askToBuyEnabled" : false,
+    "_billingGracePeriodEnabled" : false,
+    "_billingIssuesEnabled" : false,
+    "_compatibilityTimeRate" : {
+      "3" : 6
+    },
+    "_disableDialogs" : false,
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_renewalBillingIssuesEnabled" : false,
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+
+    ],
+    "_timeRate" : 1002
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21500001",
+      "localizations" : [
+
+      ],
+      "name" : "Scriptori Premium",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6500000001",
+          "introductoryOffer" : {
+            "internalID" : "6500000011",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P3D"
+          },
+          "localizations" : [
+            {
+              "description" : "Daily chapter feed, reflections, streaks and more.",
+              "displayName" : "Scriptori Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.scriptori.premium.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Scriptori Monthly",
+          "subscriptionGroupID" : "21500001",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "47.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6500000002",
+          "introductoryOffer" : {
+            "internalID" : "6500000012",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P3D"
+          },
+          "localizations" : [
+            {
+              "description" : "Everything in Scriptori, billed yearly. Save 20%.",
+              "displayName" : "Scriptori Annual",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.scriptori.premium.annual",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Scriptori Annual",
+          "subscriptionGroupID" : "21500001",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}
