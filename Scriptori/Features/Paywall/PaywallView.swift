@@ -56,13 +56,33 @@ struct PaywallView: View {
                 .padding()
             }
         }
+        .overlay { if isPurchasing { purchasingOverlay } }
+        .animation(.easeInOut(duration: 0.3), value: isPurchasing)
         .foregroundStyle(.white)
         .task {
             if subscriptions.products.isEmpty { await subscriptions.loadProducts() }
         }
         .onChange(of: subscriptions.status.hasAccess) { _, hasAccess in
-            if hasAccess && isDismissible { dismiss() }
+            // While a purchase is finishing, `purchase()` dismisses once the leaf has had its moment.
+            if hasAccess && isDismissible && !isPurchasing { dismiss() }
         }
+    }
+
+    /// Covers the paywall while the purchase is in flight: the App Store sheet slides over this,
+    /// and it's what the reader sees once they confirm.
+    private var purchasingOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.55).ignoresSafeArea()
+            VStack(spacing: 18) {
+                Image(systemName: "leaf.fill")
+                    .font(.system(size: 72))
+                    .foregroundStyle(palette.accent)
+                    .symbolEffect(.pulse, options: .repeating, isActive: true)
+                Text(showsTrial ? "Starting your trial…" : "Unlocking Scriptori…")
+                    .font(Typography.display(24))
+            }
+        }
+        .transition(.opacity)
     }
 
     // MARK: Sections
@@ -202,19 +222,16 @@ struct PaywallView: View {
             Button {
                 Task { await purchase() }
             } label: {
-                if isPurchasing {
-                    ProgressView().tint(.black)
-                } else {
-                    Text(showsTrial ? "Start Free Trial" : "Continue")
-                }
+                Text(showsTrial ? "Start Free Trial" : "Continue")
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(selectedProduct == nil || isPurchasing)
 
             Text(finePrint)
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.6))
+                .font(.footnote.weight(.bold))
+                .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 18) {
                 Button("Restore") { Task { await restore() } }
@@ -247,11 +264,19 @@ struct PaywallView: View {
         guard let product = selectedProduct else { return }
         isPurchasing = true
         errorText = nil
-        defer { isPurchasing = false }
+        // Held before the purchase so the paywall can't be swapped out the moment access flips on.
+        model.isHoldingPaywall = true
+        defer {
+            isPurchasing = false
+            model.isHoldingPaywall = false
+        }
         do {
             let token = model.profile.map { SubscriptionService.appAccountToken(for: $0.id) }
             if try await subscriptions.purchase(product, appAccountToken: token) {
+                await model.claimSubscription()
                 Haptics.chapterComplete()
+                try? await Task.sleep(for: .seconds(1.6))
+                if isDismissible { dismiss() }
             }
         } catch {
             errorText = error.localizedDescription

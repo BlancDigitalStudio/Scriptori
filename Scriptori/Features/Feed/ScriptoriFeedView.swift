@@ -79,6 +79,12 @@ struct ScriptoriFeedView: View {
         .ignoresSafeArea(.keyboard)
         .onChange(of: session.focusedItemID) {
             model.audio.stopSpeaking()
+            if session.focusedPage != nil { model.audio.beginReading() }
+        }
+        // Reopening the app restores the reader onto the card they left; no focus change fires
+        // for that, so the saved soundscape would stay silent until they swiped.
+        .onAppear {
+            if session.focusedPage != nil { model.audio.beginReading() }
         }
         .onDisappear { model.audio.stopSpeaking() }
         .sheet(item: $sharePage) { page in

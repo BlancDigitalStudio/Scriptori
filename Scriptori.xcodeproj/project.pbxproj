@@ -8,6 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		A1000000000000000000B001 /* ScriptoriKit in Frameworks */ = {isa = PBXBuildFile; productRef = A1000000000000000000D001 /* ScriptoriKit */; };
+		F321021030A69E7F006AEFBF /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = F321020F30A69E7F006AEFBF /* FirebaseAuth */; };
+		F321021230A69E7F006AEFBF /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = F321021130A69E7F006AEFBF /* FirebaseFirestore */; };
+		F321021530A69ECF006AEFBF /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = F321021430A69ECF006AEFBF /* GoogleSignIn */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +35,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1000000000000000000B001 /* ScriptoriKit in Frameworks */,
+				F321021530A69ECF006AEFBF /* GoogleSignIn in Frameworks */,
+				F321021030A69E7F006AEFBF /* FirebaseAuth in Frameworks */,
+				F321021230A69E7F006AEFBF /* FirebaseFirestore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -87,6 +93,9 @@
 			name = Scriptori;
 			packageProductDependencies = (
 				A1000000000000000000D001 /* ScriptoriKit */,
+				F321020F30A69E7F006AEFBF /* FirebaseAuth */,
+				F321021130A69E7F006AEFBF /* FirebaseFirestore */,
+				F321021430A69ECF006AEFBF /* GoogleSignIn */,
 			);
 			productName = Scriptori;
 			productReference = A1000000000000000000F001 /* Scriptori.app */;
@@ -118,6 +127,8 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				A1000000000000000000E001 /* XCLocalSwiftPackageReference "ScriptoriKit" */,
+				F321020E30A69E7F006AEFBF /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				F321021330A69ECF006AEFBF /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A10000000000000000006003 /* Products */;
@@ -286,10 +297,44 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		F321020E30A69E7F006AEFBF /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.0.0;
+			};
+		};
+		F321021330A69ECF006AEFBF /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 10.1.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		A1000000000000000000D001 /* ScriptoriKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ScriptoriKit;
+		};
+		F321020F30A69E7F006AEFBF /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F321020E30A69E7F006AEFBF /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		F321021130A69E7F006AEFBF /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F321020E30A69E7F006AEFBF /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+		F321021430A69ECF006AEFBF /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F321021330A69ECF006AEFBF /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

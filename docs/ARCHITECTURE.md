@@ -43,7 +43,7 @@ MVVM with the Observation framework (`@Observable`, `@MainActor`):
 | Layer | Types | Responsibility |
 | --- | --- | --- |
 | Views | `ScriptoriFeedView`, `ReflectionView`, `PaywallView`… | Render state, forward intents |
-| App model | `AppModel` | Routing (`launching → onboarding → signIn → paywall → main`), wiring services, completion transaction |
+| App model | `AppModel` | Routing (`launching → signIn → onboarding → claimSubscription/paywall → main`), wiring services, completion transaction |
 | Feature model | `ChapterSession` | Feed items, 1–3 regrouping, focus/anchor, marked verses and checkpoint notes, progress persistence |
 | Domain services (pure) | `StreakEngine`, `VersePaginator`, `ChapterCompletionService`, `DailyReadingResolver`, `BookRecommender` | Business rules; no side effects |
 | Platform services | `SubscriptionService`, `AuthService`, `ProfileSyncing`, `NotificationScheduler`, `AmbientAudioService`, `Haptics` | Talk to Apple frameworks / backend |
@@ -61,6 +61,11 @@ Data flow for completing a day:
 
 ## 3. Core rules
 
+**Sign-in first.** Anyone signed out (first launch or after signing out) sees Create account / Log in.
+Onboarding follows the account, not the device: a profile with no `onboarding` answers and no
+`plan.bookID` goes through it right after sign-in, and an account that already onboarded goes straight
+to the app on any device.
+
 **Onboarding.** Two intent questions (why you're here, how familiar you are with the Bible) feed
 `BookRecommender`, which ranks books from `Books.json` by matching `intents` and comfort `level`.
 The reader picks a recommended book or browses all 66, sees a "Your plan" summary, ties reading to an
@@ -75,6 +80,13 @@ or from Profile → Your book; the chosen book opens on the Today tab ready to r
 where they left off if they'd started it before (`plan.savedPositions`). Finishing a chapter of the
 new book on a day that's already complete counts toward chapters read but doesn't grow the streak
 twice. Profiles without a `bookID` (including ones from the old fixed plan) are sent to the book picker.
+
+**Progress comes from check-ins.** Every completed chapter produces one journal entry, so
+`ReadingHistory` (built from the reflections) is the source of truth for what's been read. On sign-in
+`PlanProgress.reconcile(with:books:)` corrects the counters against it: each book resumes on its first
+chapter without a check-in, and the current book is the one with the most recent check-in unless the
+reader picked a book after it (`plan.bookChosenAt`). The Chapters tab and Profile → Your books read the
+same history.
 
 **Themes and guides.** Chapters with an authored guide show a themes card (at most 3 themes, each with
 an icon, a one-line summary and a key verse) after the intro, and the reflection's takeaway chips list
@@ -105,8 +117,18 @@ choice is saved as the user's default; values saved under the old 1–5 range ar
 `com.scriptori.premium.annual`, each with a 3-day free introductory offer. The annual price is set at
 ~20% below 12 × monthly (sample: $4.99/mo and $47.99/yr). The "Save N%" badge is computed from live
 prices. Access is decided from `Transaction.currentEntitlements`. A hard paywall appears after
-onboarding and sign-in, and again whenever entitlement lapses (for example, when a trial expires
+sign-in and onboarding, and again whenever entitlement lapses (for example, when a trial expires
 without converting). A local notification goes out 24 hours before a trial ends.
+
+**One account per subscription.** A subscription is bought by an Apple ID but used by one Scriptori
+account at a time (`SubscriptionOwnership`). It starts with the account that bought it, identified by
+the transaction's `appAccountToken`. If someone signs out and signs in with a different account on the
+same Apple ID, that account sees `ClaimSubscriptionView` instead of the paywall or the app: it can move
+the subscription to itself (no new charge, and Apple never grants a second trial) or sign out. A claim
+is stored on the device (`scriptori.subscriptionClaims`, original transaction ID → user ID) and on the
+profile (`claimedSubscriptionID`) so it follows the account to other devices. This is enforced on the
+device only: until billing has a backend, the previous account keeps access on devices where the claim
+never happened.
 
 ## 3a. Backend & billing decisions
 
@@ -136,6 +158,7 @@ users/{uid}                         UserProfile
   streak { current, longest, lastCompletedDay "YYYY-MM-DD", lastRepairDay, recentDays[] }
   totalChaptersRead, reflectionCount
   subscription { tier, isInTrial, expiresAt, willAutoRenew }   // mirrored; the store is source of truth, written by Cloud Functions once added (see 3a)
+  claimedSubscriptionID                                        // original transaction ID of a subscription taken over from another account
   preferences { versesPerCard, typeface, ambientSound, remindersEnabled, reminderHour, reminderMinute }
   plan { planID, bookID, position, lastCompletedDay, lastCompletedChapterID, savedPositions{bookID: position} }
   onboarding { intent, familiarity, bookID, cue }

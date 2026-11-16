@@ -96,7 +96,7 @@ private struct JournalRow: View {
     }
 }
 
-private struct JournalDetailView: View {
+struct JournalDetailView: View {
     @Environment(AppModel.self) private var model
     let entryID: UUID
 

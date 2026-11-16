@@ -7,7 +7,11 @@ import ScriptoriKit
 @Observable
 @MainActor
 final class AmbientAudioService {
+    /// The reader's chosen soundscape (saved in their preferences).
     private(set) var sound: AmbientSound = .off
+    /// Soundscapes only play once the reader has started reading this session, so opening
+    /// the app is silent until they swipe into a chapter.
+    private(set) var isReading = false
     /// Reference of the card being read aloud, e.g. "Genesis 1:1–3", while speech is playing.
     private(set) var speakingReference: String?
 
@@ -22,6 +26,7 @@ final class AmbientAudioService {
         speechDelegate.onFinish = { [weak self] in self?.speakingReference = nil }
     }
 
+    /// Remembers the reader's choice; it plays right away only if they're already reading.
     func setSound(_ newValue: AmbientSound) {
         guard newValue != sound else { return }
         stopSoundscape()
@@ -30,8 +35,41 @@ final class AmbientAudioService {
             stopSpeaking()
             return
         }
+        if isReading { play(newValue) }
+    }
+
+    /// Called when the reader swipes onto a verse card: starts the chosen soundscape.
+    func beginReading() {
+        guard !isReading else { return }
+        isReading = true
+        if sound != .off { play(sound) }
+    }
+
+    /// Brings the saved soundscape back after the app returns from the background, where the
+    /// system may have stopped the audio engine (interruptions, route changes, long suspension).
+    func resumeIfNeeded() {
+        guard isReading, sound != .off else { return }
+        if noiseNode == nil {
+            play(sound)
+        } else if !engine.isRunning {
+            activateSession()
+            try? engine.start()
+            fade(to: 0.35)
+        }
+    }
+
+    /// Stops everything and forgets the session (sign-out).
+    func reset() {
+        stopSoundscape()
+        stopSpeaking()
+        sound = .off
+        isReading = false
+    }
+
+    private func play(_ sound: AmbientSound) {
+        guard noiseNode == nil else { return }
         activateSession()
-        startSoundscape(newValue)
+        startSoundscape(sound)
     }
 
     func isSpeaking(_ reference: String) -> Bool {

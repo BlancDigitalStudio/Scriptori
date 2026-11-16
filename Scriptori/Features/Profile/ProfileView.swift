@@ -7,6 +7,9 @@ struct ProfileView: View {
     @State private var showManageSubscription = false
     @State private var showPaywall = false
     @State private var confirmDelete = false
+    @State private var reauthProvider: AuthProvider?
+    @State private var deleteError: String?
+    @State private var showStreakInfo = false
 
     var body: some View {
         NavigationStack {
@@ -23,8 +26,21 @@ struct ProfileView: View {
                 .navigationTitle(profile.displayName ?? "Profile")
                 .manageSubscriptionsSheet(isPresented: $showManageSubscription)
                 .sheet(isPresented: $showPaywall) { PaywallView(isDismissible: true) }
+                .sheet(isPresented: Binding(get: { reauthProvider != nil }, set: { if !$0 { reauthProvider = nil } })) {
+                    if let reauthProvider {
+                        ConfirmIdentitySheet(provider: reauthProvider) { Task { await deleteAccount() } }
+                    }
+                }
+                .alert("Couldn't delete your account", isPresented: Binding(get: { deleteError != nil }, set: { if !$0 { deleteError = nil } })) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(deleteError ?? "")
+                }
+                .sheet(isPresented: $showStreakInfo) {
+                    StreakInfoSheet(current: model.displayedStreak, longest: profile.streak.longest, days: profile.streak.recentDays)
+                }
                 .confirmationDialog("Delete your account and all reflections?", isPresented: $confirmDelete, titleVisibility: .visible) {
-                    Button("Delete account", role: .destructive) { Task { await model.deleteAccount() } }
+                    Button("Delete account", role: .destructive) { Task { await deleteAccount() } }
                 } message: {
                     Text("This can't be undone. Manage your App Store subscription separately in Settings.")
                 }
@@ -34,50 +50,60 @@ struct ProfileView: View {
 
     private func stats(_ profile: UserProfile) -> some View {
         HStack {
-            stat("\(model.displayedStreak)", "Current streak", "flame.fill", .orange)
+            stat("\(model.displayedStreak)", "Current streak", "flame.fill", .orange) { showStreakInfo = true }
             Divider()
-            stat("\(profile.streak.longest)", "Longest", "trophy.fill", .yellow)
+            stat("\(profile.streak.longest)", "Longest", "trophy.fill", .yellow) { showStreakInfo = true }
             Divider()
-            stat("\(profile.totalChaptersRead)", "Chapters", "book.fill", .green)
+            stat("\(model.history.chapters.count)", "Chapters", "book.fill", .green) { model.selectedTab = .chapters }
             Divider()
-            stat("\(profile.reflectionCount)", "Reflections", "text.bubble.fill", .purple)
+            stat("\(model.reflections.count)", "Reflections", "text.bubble.fill", .purple) { model.selectedTab = .journal }
         }
         .padding(.vertical, 6)
     }
 
-    private func stat(_ value: String, _ label: String, _ symbol: String, _ tint: Color) -> some View {
-        VStack(spacing: 4) {
-            Image(systemName: symbol).foregroundStyle(tint)
-            Text(value).font(.title3.bold()).monospacedDigit()
-            Text(label).font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
+    private func stat(_ value: String, _ label: String, _ symbol: String, _ tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: symbol).foregroundStyle(tint)
+                Text(value).font(.title3.bold()).monospacedDigit().foregroundStyle(.primary)
+                Text(label).font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(.rect)
         }
-        .frame(maxWidth: .infinity)
+        .buttonStyle(.borderless)
+        .accessibilityLabel("\(label): \(value)")
     }
 
+    /// The current book first, then every other book with a check-in (most recent first).
     private func bookSection(_ plan: PlanProgress) -> some View {
-        Section("Your book") {
+        let history = model.history
+        let started = ([plan.bookID].compactMap { $0 } + history.startedBookIDs).reduce(into: [String]()) {
+            if !$0.contains($1) { $0.append($1) }
+        }
+        return Section(started.count > 1 ? "Your books" : "Your book") {
+            ForEach(started, id: \.self) { bookID in
+                if let book = model.book(id: bookID) {
+                    let isCurrent = bookID == plan.bookID
+                    Button {
+                        if !isCurrent { Task { await model.chooseBook(bookID) } } else { model.selectedTab = .today }
+                    } label: {
+                        StartedBookRow(book: book, read: history.chaptersRead(in: bookID), isCurrent: isCurrent)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint(isCurrent ? "Open today's chapter" : "Switch to \(book.name)")
+                }
+            }
             NavigationLink {
                 ChangeBookScreen()
             } label: {
-                if let book = model.book(id: plan.bookID) {
-                    HStack(spacing: 12) {
-                        BookCover(book: book, size: 40)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(book.name)
-                            Text("\(min(plan.position, book.chapterCount)) of \(book.chapterCount) chapters read")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                } else {
-                    Label("Choose a book", systemImage: "books.vertical")
-                }
+                Label(started.isEmpty ? "Choose a book" : "Browse all books", systemImage: "books.vertical")
             }
         }
     }
 
     private func readingSection(_ prefs: ReadingPreferences) -> some View {
-        Section("Reading") {
+        Section {
             Picker("Typeface", selection: binding(\.typeface)) {
                 ForEach(Typeface.allCases, id: \.self) { Text($0.label).tag($0) }
             }
@@ -87,6 +113,10 @@ struct ProfileView: View {
                     Label($0.label, systemImage: $0.symbol).tag($0)
                 }
             }
+        } header: {
+            Text("Reading")
+        } footer: {
+            Text("Ambient sound starts once you swipe into today's chapter, and your choice is remembered next time.")
         }
     }
 
@@ -127,6 +157,16 @@ struct ProfileView: View {
         }
     }
 
+    private func deleteAccount() async {
+        do {
+            try await model.deleteAccount()
+        } catch AuthError.requiresRecentLogin(let provider) {
+            reauthProvider = provider
+        } catch {
+            deleteError = error.localizedDescription
+        }
+    }
+
     private func planLabel(_ status: SubscriptionState) -> String {
         switch status.tier {
         case .free: "Free"
@@ -153,6 +193,86 @@ struct ProfileView: View {
                 }
             }
         )
+    }
+}
+
+private struct StartedBookRow: View {
+    let book: BibleBook
+    let read: Int
+    let isCurrent: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            BookCover(book: book, size: 40)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(book.name)
+                    if isCurrent {
+                        Text("Reading")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.tint.opacity(0.15), in: .capsule)
+                            .foregroundStyle(.tint)
+                    }
+                }
+                Text("\(read) of \(book.chapterCount) chapters read")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ProgressView(value: Double(min(read, book.chapterCount)), total: Double(book.chapterCount))
+            }
+            if !isCurrent {
+                Text("Switch")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.tint)
+            }
+        }
+        .contentShape(.rect)
+    }
+}
+
+private struct StreakInfoSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let current: Int
+    let longest: Int
+    let days: [DayKey]
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    explainer("flame.fill", .orange, "Current streak", "\(current) day\(current == 1 ? "" : "s")",
+                              "Days in a row, up to today, with at least one chapter checked in. Miss a day and it starts over, unless you use Streak Repair within 24 hours (once a week).")
+                    explainer("trophy.fill", .yellow, "Longest streak", "\(longest) day\(longest == 1 ? "" : "s")",
+                              "Your best run ever. It never goes down, so it's the number to beat.")
+                }
+                Section("Last 7 days") { WeekStrip(days: days) }
+                Section {
+                    Text("Checking in on more than one chapter in a day counts toward Chapters, but adds one day to your streak.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Streaks")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func explainer(_ symbol: String, _ tint: Color, _ title: String, _ value: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: symbol).foregroundStyle(tint).font(.title3).frame(width: 28)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(title).font(.headline)
+                    Spacer()
+                    Text(value).font(.headline.monospacedDigit())
+                }
+                Text(detail).font(.subheadline).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 

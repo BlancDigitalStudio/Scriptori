@@ -120,6 +120,9 @@ public struct PlanProgress: Codable, Hashable, Sendable {
     public var lastCompletedChapterID: String?
     /// Where the reader left off in books they switched away from, so switching back resumes.
     public var savedPositions: [String: Int]
+    /// When the reader last picked a book. A check-in after this makes that check-in's book
+    /// the current one (see `reconcile(with:books:)`).
+    public var bookChosenAt: Date?
 
     public init(
         planID: String = PlanProgress.bookPlanID,
@@ -127,7 +130,8 @@ public struct PlanProgress: Codable, Hashable, Sendable {
         position: Int = 0,
         lastCompletedDay: DayKey? = nil,
         lastCompletedChapterID: String? = nil,
-        savedPositions: [String: Int] = [:]
+        savedPositions: [String: Int] = [:],
+        bookChosenAt: Date? = nil
     ) {
         self.planID = planID
         self.bookID = bookID
@@ -135,6 +139,7 @@ public struct PlanProgress: Codable, Hashable, Sendable {
         self.lastCompletedDay = lastCompletedDay
         self.lastCompletedChapterID = lastCompletedChapterID
         self.savedPositions = savedPositions
+        self.bookChosenAt = bookChosenAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -145,7 +150,8 @@ public struct PlanProgress: Codable, Hashable, Sendable {
             position: try container.decodeIfPresent(Int.self, forKey: .position) ?? 0,
             lastCompletedDay: try container.decodeIfPresent(DayKey.self, forKey: .lastCompletedDay),
             lastCompletedChapterID: try container.decodeIfPresent(String.self, forKey: .lastCompletedChapterID),
-            savedPositions: try container.decodeIfPresent([String: Int].self, forKey: .savedPositions) ?? [:]
+            savedPositions: try container.decodeIfPresent([String: Int].self, forKey: .savedPositions) ?? [:],
+            bookChosenAt: try container.decodeIfPresent(Date.self, forKey: .bookChosenAt)
         )
     }
 
@@ -158,8 +164,9 @@ public struct PlanProgress: Codable, Hashable, Sendable {
 
     /// Switches to `bookID` and makes its next chapter available today: from where the
     /// reader left off, or chapter 1 if it's new or was finished. The streak is unaffected.
-    public mutating func start(bookID: String, chapterCount: Int) {
+    public mutating func start(bookID: String, chapterCount: Int, at date: Date = .now) {
         guard bookID != self.bookID else { return }
+        bookChosenAt = date
         if let current = self.bookID { savedPositions[current] = position }
         let saved = savedPositions.removeValue(forKey: bookID) ?? 0
         planID = Self.bookPlanID
@@ -179,6 +186,9 @@ public struct UserProfile: Codable, Hashable, Identifiable, Sendable {
     public var totalChaptersRead: Int
     public var reflectionCount: Int
     public var subscription: SubscriptionState
+    /// Original transaction ID of a subscription this account took over from the account
+    /// that bought it (see `SubscriptionOwnership`).
+    public var claimedSubscriptionID: String?
     public var preferences: ReadingPreferences
     public var plan: PlanProgress
     public var onboarding: OnboardingAnswers?
@@ -194,6 +204,7 @@ public struct UserProfile: Codable, Hashable, Identifiable, Sendable {
         totalChaptersRead: Int = 0,
         reflectionCount: Int = 0,
         subscription: SubscriptionState = .free,
+        claimedSubscriptionID: String? = nil,
         preferences: ReadingPreferences = ReadingPreferences(),
         plan: PlanProgress,
         onboarding: OnboardingAnswers? = nil,
@@ -208,6 +219,7 @@ public struct UserProfile: Codable, Hashable, Identifiable, Sendable {
         self.totalChaptersRead = totalChaptersRead
         self.reflectionCount = reflectionCount
         self.subscription = subscription
+        self.claimedSubscriptionID = claimedSubscriptionID
         self.preferences = preferences
         self.plan = plan
         self.onboarding = onboarding

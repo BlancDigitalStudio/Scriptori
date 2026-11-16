@@ -23,6 +23,8 @@ final class SubscriptionService {
 
     private(set) var products: [Product] = []
     private(set) var status: SubscriptionState = .free
+    /// The transaction behind `status`, for deciding which account it belongs to.
+    private(set) var entitlement: SubscriptionEntitlement?
     private(set) var isEligibleForTrial = true
     private(set) var loadState: LoadState = .idle
     private(set) var hasResolvedEntitlements = false
@@ -129,6 +131,13 @@ final class SubscriptionService {
         }
 
         hasResolvedEntitlements = true
+        let nextEntitlement = best.map {
+            SubscriptionEntitlement(
+                originalTransactionID: String($0.transaction.originalID),
+                purchaserToken: $0.transaction.appAccountToken
+            )
+        }
+        if nextEntitlement != entitlement { entitlement = nextEntitlement }
         if next != status {
             status = next
             onStatusChange?(next)

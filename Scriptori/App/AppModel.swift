@@ -13,7 +13,7 @@ struct TodayContext {
 @MainActor
 final class AppModel {
     enum Phase: Equatable {
-        case launching, onboarding, signIn, paywall, main
+        case launching, signIn, onboarding, claimSubscription, paywall, main
     }
 
     let auth = AuthService()
@@ -44,8 +44,11 @@ final class AppModel {
     var errorMessage: String?
 
     enum Tab: Hashable {
-        case today, journal, profile
+        case today, journal, chapters, profile
     }
+
+    /// Chapters checked in on, derived from the journal.
+    var history: ReadingHistory { ReadingHistory(entries: reflections) }
 
     var selectedTab: Tab = .today
 
@@ -92,25 +95,80 @@ final class AppModel {
     var debugBypassPaywall = false
     #endif
 
-    var hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "scriptori.onboarded") {
-        didSet { UserDefaults.standard.set(hasCompletedOnboarding, forKey: "scriptori.onboarded") }
-    }
+    /// Keeps the paywall on screen for a beat after a purchase succeeds, so the reader sees
+    /// the leaf finish its pulse instead of the screen vanishing the instant access flips on.
+    var isHoldingPaywall = false
 
     var streakEngine: StreakEngine { completion.engine }
 
     var phase: Phase {
         if isLaunching { return .launching }
-        if !hasCompletedOnboarding { return .onboarding }
-        if auth.session == nil || profile == nil { return .signIn }
-        if !hasPremiumAccess { return .paywall }
-        return .main
+        guard auth.session != nil, let profile else { return .signIn }
+        if Self.needsOnboarding(profile) { return .onboarding }
+        if isHoldingPaywall { return .paywall }
+        if hasPremiumAccess { return .main }
+        return subscriptionOwnership == .other ? .claimSubscription : .paywall
+    }
+
+    /// Onboarding follows the account, not the device: a profile that has neither answered
+    /// the questions nor picked a book goes through it, whichever sign-in button created it.
+    private static func needsOnboarding(_ profile: UserProfile) -> Bool {
+        profile.onboarding == nil && profile.plan.bookID == nil
     }
 
     var hasPremiumAccess: Bool {
         #if DEBUG
         if debugBypassPaywall { return true }
         #endif
-        return subscriptions.status.hasAccess
+        return subscriptions.status.hasAccess && subscriptionOwnership == .mine
+    }
+
+    /// Original transaction ID → user ID of the last account to buy or claim that
+    /// subscription on this device.
+    private(set) var subscriptionClaims = UserDefaults.standard.dictionary(forKey: AppModel.claimsKey) as? [String: String] ?? [:]
+    private static let claimsKey = "scriptori.subscriptionClaims"
+
+    /// Whether the Apple ID's subscription belongs to the signed-in account. A second account
+    /// on the same Apple ID gets `.other` until it claims the subscription.
+    var subscriptionOwnership: SubscriptionOwnership {
+        guard let profile else { return .none }
+        return .resolve(
+            entitlement: subscriptions.entitlement,
+            userID: profile.id,
+            userToken: SubscriptionService.appAccountToken(for: profile.id),
+            profileClaim: profile.claimedSubscriptionID,
+            deviceClaims: subscriptionClaims
+        )
+    }
+
+    /// What the signed-in account is entitled to: the store's status, unless the
+    /// subscription belongs to another account.
+    private var ownedSubscription: SubscriptionState {
+        subscriptionOwnership == .mine ? subscriptions.status : .free
+    }
+
+    /// Moves the Apple ID's active subscription to the signed-in account. Also called after
+    /// a purchase, so a resubscription overrides an older claim by another account.
+    func claimSubscription() async {
+        guard let profile, let entitlement = subscriptions.entitlement else { return }
+        subscriptionClaims[entitlement.originalTransactionID] = profile.id
+        UserDefaults.standard.set(subscriptionClaims, forKey: Self.claimsKey)
+        await mirrorSubscription(claiming: entitlement.originalTransactionID)
+    }
+
+    /// Copies the subscription this account owns onto its profile.
+    private func mirrorSubscription(claiming claimedID: String? = nil) async {
+        guard var profile else { return }
+        let status = ownedSubscription
+        let claim = claimedID ?? profile.claimedSubscriptionID
+        guard status != profile.subscription || claim != profile.claimedSubscriptionID else { return }
+        let startedTrial = status.isInTrial && !profile.subscription.isInTrial
+        profile.subscription = status
+        profile.claimedSubscriptionID = claim
+        profile.updatedAt = .now
+        self.profile = profile
+        await persistProfile()
+        if startedTrial { await notifications.scheduleTrialEndingReminder(expiresAt: status.expiresAt) }
     }
 
     var streakStatus: StreakStatus {
@@ -142,7 +200,6 @@ final class AppModel {
             if let data = try? JSONEncoder().encode(OnboardingAnswers(bookID: "PHP")) {
                 UserDefaults.standard.set(data, forKey: PendingKey.answers)
             }
-            hasCompletedOnboarding = true
             debugBypassPaywall = arguments.contains("-demo")
             _ = auth.signInAsGuest()
         }        #endif
@@ -152,6 +209,7 @@ final class AppModel {
         }    }
 
     func handleBecameActive() async {
+        audio.resumeIfNeeded()
         await subscriptions.refreshEntitlements()
         guard let profile else { return }
         if let today, today.session.progress.day != DayKey(.now) {
@@ -161,22 +219,22 @@ final class AppModel {
     }
 
     func completeOnboarding(answers: OnboardingAnswers, remindersEnabled: Bool, reminderTime: Date, versesPerCard: Int) async {
-        let parts = Calendar.current.dateComponents([.hour, .minute], from: reminderTime)
-        let prefs = ReadingPreferences(
-            versesPerCard: versesPerCard,
-            remindersEnabled: remindersEnabled,
-            reminderHour: parts.hour ?? 8,
-            reminderMinute: parts.minute ?? 0
-        )
-        let encoder = JSONEncoder()
-        if let data = try? encoder.encode(prefs) {
-            UserDefaults.standard.set(data, forKey: PendingKey.preferences)
-        }
-        if let data = try? encoder.encode(answers) {
-            UserDefaults.standard.set(data, forKey: PendingKey.answers)
-        }
         if remindersEnabled { await notifications.requestAuthorization() }
-        hasCompletedOnboarding = true
+        guard var profile else { return }
+        let parts = Calendar.current.dateComponents([.hour, .minute], from: reminderTime)
+        profile.preferences.versesPerCard = versesPerCard
+        profile.preferences.remindersEnabled = remindersEnabled
+        profile.preferences.reminderHour = parts.hour ?? 8
+        profile.preferences.reminderMinute = parts.minute ?? 0
+        profile.onboarding = answers
+        if let bookID = answers.bookID, let book = content?.book(id: bookID) {
+            profile.plan.start(bookID: bookID, chapterCount: book.chapterCount)
+        }
+        profile.updatedAt = .now
+        self.profile = profile
+        await persistProfile()
+        await loadToday()
+        await notifications.refresh(for: profile, engine: streakEngine)
     }
 
     /// Switches to a book and opens it on the Today tab, ready to read now: from where the
@@ -220,7 +278,7 @@ final class AppModel {
     }
 
     func signOut() {
-        audio.setSound(.off)
+        audio.reset()
         auth.signOut()
         profile = nil
         today = nil
@@ -231,11 +289,19 @@ final class AppModel {
         reflections = []
     }
 
-    func deleteAccount() async {
+    /// Deletes the reader's synced data and their sign-in account. Throws
+    /// `AuthError.requiresRecentLogin` if they need to confirm their identity first, in which
+    /// case nothing local is removed and they stay signed in to retry.
+    func deleteAccount() async throws {
         guard let profile else { return }
+        try auth.requireRecentSignIn()
+        // Remote data must go while still signed in; Firestore rules only allow the owner.
         try? await sync.deleteAll(userID: profile.id)
+        try await auth.deleteAccount()
         try? await store.removeAll(namespace: profile.id)
-        try? await auth.deleteAccount()
+        // A deleted account can't hold a subscription; the next account can claim it.
+        subscriptionClaims = subscriptionClaims.filter { $0.value != profile.id }
+        UserDefaults.standard.set(subscriptionClaims, forKey: Self.claimsKey)
         signOut()
     }
 
@@ -244,7 +310,8 @@ final class AppModel {
     private func loadProfile(for session: AuthSession) async {
         let local = await store.load(UserProfile.self, for: .profile, namespace: session.userID)
         let remote = try? await sync.fetchProfile(userID: session.userID)
-        let pendingPreferences = Self.consumePending(ReadingPreferences.self, key: PendingKey.preferences)
+        // Answers saved before sign-in: the `-demo` launch arguments, or onboarding finished on a
+        // build where it came first.
         let pendingAnswers = Self.consumePending(OnboardingAnswers.self, key: PendingKey.answers)
         var resolved = [local, remote].compactMap { $0 }.max { $0.updatedAt < $1.updatedAt }
             ?? UserProfile(
@@ -252,23 +319,36 @@ final class AppModel {
                 displayName: session.displayName,
                 email: session.email,
                 authProvider: session.provider,
-                preferences: pendingPreferences ?? ReadingPreferences(),
                 plan: PlanProgress()
             )
         if let pendingAnswers {
-            if resolved.onboarding == nil { resolved.onboarding = pendingAnswers }
-            // Profiles from before books could be chosen have no book yet; take the onboarding pick.
+            // They only fill gaps; an account that already onboarded keeps its own answers and book.
+            if resolved.onboarding == nil {
+                resolved.onboarding = pendingAnswers
+                resolved.updatedAt = .now
+            }
             if resolved.plan.bookID == nil, let bookID = pendingAnswers.bookID, let book = content?.book(id: bookID) {
                 resolved.plan.start(bookID: bookID, chapterCount: book.chapterCount)
                 resolved.updatedAt = .now
             }
         }
-        resolved.subscription = subscriptions.status
+        profile = resolved
+        // Needs `profile` set: ownership depends on who is signed in.
+        resolved.subscription = ownedSubscription
         profile = resolved
 
         let localEntries = await store.load([ReflectionEntry].self, for: .reflections, namespace: session.userID) ?? []
         let remoteEntries = (try? await sync.fetchReflections(userID: session.userID)) ?? []
         reflections = ReflectionEntry.merge(localEntries, remoteEntries)
+        if let books = content?.books {
+            var plan = resolved.plan
+            plan.reconcile(with: history, books: books)
+            if plan != resolved.plan {
+                resolved.plan = plan
+                resolved.updatedAt = .now
+                profile = resolved
+            }
+        }
 
         await persistProfile()
         audio.setSound(resolved.preferences.ambientSound)
@@ -382,15 +462,7 @@ final class AppModel {
     // MARK: Private
 
     private func subscriptionChanged(_ status: SubscriptionState) {
-        guard var profile else { return }
-        let startedTrial = status.isInTrial && !profile.subscription.isInTrial
-        profile.subscription = status
-        profile.updatedAt = .now
-        self.profile = profile
-        Task {
-            await persistProfile()
-            if startedTrial { await notifications.scheduleTrialEndingReminder(expiresAt: status.expiresAt) }
-        }
+        Task { await mirrorSubscription() }
     }
 
     private func persistProfile() async {
@@ -420,7 +492,6 @@ final class AppModel {
     }
 
     private enum PendingKey {
-        static let preferences = "scriptori.pendingPreferences"
         static let answers = "scriptori.pendingOnboarding"
     }
 

@@ -9,10 +9,12 @@ struct RootView: View {
             switch model.phase {
             case .launching:
                 LaunchView()
-            case .onboarding:
-                OnboardingView()
             case .signIn:
                 SignInView()
+            case .onboarding:
+                OnboardingView()
+            case .claimSubscription:
+                ClaimSubscriptionView()
             case .paywall:
                 PaywallView(isDismissible: false)
             case .main:
@@ -56,6 +58,9 @@ struct MainTabView: View {
             JournalView()
                 .tabItem { Label("Journal", systemImage: "book.closed") }
                 .tag(AppModel.Tab.journal)
+            ChaptersView()
+                .tabItem { Label("Chapters", systemImage: "book.pages") }
+                .tag(AppModel.Tab.chapters)
             ProfileView()
                 .tabItem { Label("Profile", systemImage: "person.crop.circle") }
                 .tag(AppModel.Tab.profile)
