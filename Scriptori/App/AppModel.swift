@@ -13,7 +13,7 @@ struct TodayContext {
 @MainActor
 final class AppModel {
     enum Phase: Equatable {
-        case launching, signIn, onboarding, claimSubscription, paywall, main
+        case launching, signIn, onboarding, subscriptionLocked, paywall, main
     }
 
     let auth = AuthService()
@@ -107,7 +107,7 @@ final class AppModel {
         if Self.needsOnboarding(profile) { return .onboarding }
         if isHoldingPaywall { return .paywall }
         if hasPremiumAccess { return .main }
-        return subscriptionOwnership == .other ? .claimSubscription : .paywall
+        return subscriptionOwnership == .other ? .subscriptionLocked : .paywall
     }
 
     /// Onboarding follows the account, not the device: a profile that has neither answered
@@ -123,21 +123,21 @@ final class AppModel {
         return subscriptions.status.hasAccess && subscriptionOwnership == .mine
     }
 
-    /// Original transaction ID → user ID of the last account to buy or claim that
-    /// subscription on this device.
-    private(set) var subscriptionClaims = UserDefaults.standard.dictionary(forKey: AppModel.claimsKey) as? [String: String] ?? [:]
-    private static let claimsKey = "scriptori.subscriptionClaims"
+    /// `appAccountToken`s of accounts deleted on this device while they held a subscription.
+    /// Their purchases are open to any account here (see `SubscriptionOwnership`).
+    private(set) var releasedPurchasers = Set(
+        (UserDefaults.standard.stringArray(forKey: AppModel.releasedPurchasersKey) ?? []).compactMap(UUID.init(uuidString:))
+    )
+    private static let releasedPurchasersKey = "scriptori.releasedSubscriptionPurchasers"
 
-    /// Whether the Apple ID's subscription belongs to the signed-in account. A second account
-    /// on the same Apple ID gets `.other` until it claims the subscription.
+    /// Whether the Apple ID's subscription belongs to the signed-in account. It is locked to
+    /// the account that bought it, so a second account on the same Apple ID gets `.other`.
     var subscriptionOwnership: SubscriptionOwnership {
         guard let profile else { return .none }
         return .resolve(
             entitlement: subscriptions.entitlement,
-            userID: profile.id,
             userToken: SubscriptionService.appAccountToken(for: profile.id),
-            profileClaim: profile.claimedSubscriptionID,
-            deviceClaims: subscriptionClaims
+            releasedPurchasers: releasedPurchasers
         )
     }
 
@@ -147,24 +147,13 @@ final class AppModel {
         subscriptionOwnership == .mine ? subscriptions.status : .free
     }
 
-    /// Moves the Apple ID's active subscription to the signed-in account. Also called after
-    /// a purchase, so a resubscription overrides an older claim by another account.
-    func claimSubscription() async {
-        guard let profile, let entitlement = subscriptions.entitlement else { return }
-        subscriptionClaims[entitlement.originalTransactionID] = profile.id
-        UserDefaults.standard.set(subscriptionClaims, forKey: Self.claimsKey)
-        await mirrorSubscription(claiming: entitlement.originalTransactionID)
-    }
-
     /// Copies the subscription this account owns onto its profile.
-    private func mirrorSubscription(claiming claimedID: String? = nil) async {
+    private func mirrorSubscription() async {
         guard var profile else { return }
         let status = ownedSubscription
-        let claim = claimedID ?? profile.claimedSubscriptionID
-        guard status != profile.subscription || claim != profile.claimedSubscriptionID else { return }
+        guard status != profile.subscription else { return }
         let startedTrial = status.isInTrial && !profile.subscription.isInTrial
         profile.subscription = status
-        profile.claimedSubscriptionID = claim
         profile.updatedAt = .now
         self.profile = profile
         await persistProfile()
@@ -295,13 +284,18 @@ final class AppModel {
     func deleteAccount() async throws {
         guard let profile else { return }
         try auth.requireRecentSignIn()
+        let token = SubscriptionService.appAccountToken(for: profile.id)
+        let heldSubscription = subscriptions.entitlement?.purchaserToken == token
         // Remote data must go while still signed in; Firestore rules only allow the owner.
         try? await sync.deleteAll(userID: profile.id)
         try await auth.deleteAccount()
         try? await store.removeAll(namespace: profile.id)
-        // A deleted account can't hold a subscription; the next account can claim it.
-        subscriptionClaims = subscriptionClaims.filter { $0.value != profile.id }
-        UserDefaults.standard.set(subscriptionClaims, forKey: Self.claimsKey)
+        // The subscription keeps billing after the account is gone, so don't leave it locked
+        // to an account nobody can sign in to.
+        if heldSubscription {
+            releasedPurchasers.insert(token)
+            UserDefaults.standard.set(releasedPurchasers.map(\.uuidString), forKey: Self.releasedPurchasersKey)
+        }
         signOut()
     }
 

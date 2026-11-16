@@ -15,34 +15,29 @@ public struct SubscriptionEntitlement: Hashable, Sendable {
     }
 }
 
-/// A subscription is bought by an Apple ID but used by one Scriptori account at a time.
-/// It starts with the account that bought it and moves when another account claims it.
+/// A subscription is bought by an Apple ID but locked to the Scriptori account that bought it.
+/// The purchase itself carries the buyer (`appAccountToken`), so every device on that Apple ID
+/// reaches the same answer without a backend.
 public enum SubscriptionOwnership: Hashable, Sendable {
     /// No active subscription.
     case none
     /// The signed-in account may use the subscription.
     case mine
-    /// The subscription is active but belongs to another account until this one claims it.
+    /// The subscription is active but locked to another account.
     case other
 
     /// - Parameters:
     ///   - userToken: the signed-in account's `appAccountToken`.
-    ///   - profileClaim: `UserProfile.claimedSubscriptionID`, which follows the account across devices.
-    ///   - deviceClaims: original transaction ID → user ID of the last account to buy or claim it
-    ///     on this device. Newest decision on the device, so it wins over everything else.
+    ///   - releasedPurchasers: tokens of accounts deleted on this device while they held a
+    ///     subscription. Their purchases are open to any account, so a subscription that is
+    ///     still billing isn't stranded behind an account that no longer exists.
     public static func resolve(
         entitlement: SubscriptionEntitlement?,
-        userID: String,
         userToken: UUID,
-        profileClaim: String?,
-        deviceClaims: [String: String]
+        releasedPurchasers: Set<UUID> = []
     ) -> SubscriptionOwnership {
         guard let entitlement else { return .none }
-        if let claimant = deviceClaims[entitlement.originalTransactionID] {
-            return claimant == userID ? .mine : .other
-        }
-        if profileClaim == entitlement.originalTransactionID { return .mine }
-        guard let purchaser = entitlement.purchaserToken else { return .mine }
+        guard let purchaser = entitlement.purchaserToken, !releasedPurchasers.contains(purchaser) else { return .mine }
         return purchaser == userToken ? .mine : .other
     }
 }

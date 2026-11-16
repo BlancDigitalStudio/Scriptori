@@ -40,9 +40,12 @@ struct ProfileView: View {
                     StreakInfoSheet(current: model.displayedStreak, longest: profile.streak.longest, days: profile.streak.recentDays)
                 }
                 .confirmationDialog("Delete your account and all reflections?", isPresented: $confirmDelete, titleVisibility: .visible) {
+                    if profile.subscription.hasAccess && profile.subscription.willAutoRenew {
+                        Button("Manage subscription") { showManageSubscription = true }
+                    }
                     Button("Delete account", role: .destructive) { Task { await deleteAccount() } }
                 } message: {
-                    Text("This can't be undone. Manage your App Store subscription separately in Settings.")
+                    Text(deleteWarning(profile.subscription))
                 }
             }
         }
@@ -165,6 +168,18 @@ struct ProfileView: View {
         } catch {
             deleteError = error.localizedDescription
         }
+    }
+
+    /// Deleting the account can't cancel an App Store subscription, so say what keeps billing.
+    private func deleteWarning(_ status: SubscriptionState) -> String {
+        let base = "This can't be undone."
+        guard status.hasAccess else { return base }
+        guard status.willAutoRenew else {
+            return "\(base) Your subscription is already cancelled and won't renew."
+        }
+        return status.isInTrial
+            ? "\(base) Deleting your account doesn't cancel your free trial: you'll be charged when it ends unless you cancel it with Apple first."
+            : "\(base) Deleting your account doesn't cancel your subscription: it keeps renewing until you cancel it with Apple."
     }
 
     private func planLabel(_ status: SubscriptionState) -> String {

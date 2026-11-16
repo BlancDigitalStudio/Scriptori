@@ -13,8 +13,8 @@ struct RootView: View {
                 SignInView()
             case .onboarding:
                 OnboardingView()
-            case .claimSubscription:
-                ClaimSubscriptionView()
+            case .subscriptionLocked:
+                SubscriptionLockedView()
             case .paywall:
                 PaywallView(isDismissible: false)
             case .main:

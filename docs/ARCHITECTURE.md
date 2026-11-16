@@ -43,7 +43,7 @@ MVVM with the Observation framework (`@Observable`, `@MainActor`):
 | Layer | Types | Responsibility |
 | --- | --- | --- |
 | Views | `ScriptoriFeedView`, `ReflectionView`, `PaywallView`… | Render state, forward intents |
-| App model | `AppModel` | Routing (`launching → signIn → onboarding → claimSubscription/paywall → main`), wiring services, completion transaction |
+| App model | `AppModel` | Routing (`launching → signIn → onboarding → subscriptionLocked/paywall → main`), wiring services, completion transaction |
 | Feature model | `ChapterSession` | Feed items, 1–3 regrouping, focus/anchor, marked verses and checkpoint notes, progress persistence |
 | Domain services (pure) | `StreakEngine`, `VersePaginator`, `ChapterCompletionService`, `DailyReadingResolver`, `BookRecommender` | Business rules; no side effects |
 | Platform services | `SubscriptionService`, `AuthService`, `ProfileSyncing`, `NotificationScheduler`, `AmbientAudioService`, `Haptics` | Talk to Apple frameworks / backend |
@@ -120,15 +120,16 @@ prices. Access is decided from `Transaction.currentEntitlements`. A hard paywall
 sign-in and onboarding, and again whenever entitlement lapses (for example, when a trial expires
 without converting). A local notification goes out 24 hours before a trial ends.
 
-**One account per subscription.** A subscription is bought by an Apple ID but used by one Scriptori
-account at a time (`SubscriptionOwnership`). It starts with the account that bought it, identified by
-the transaction's `appAccountToken`. If someone signs out and signs in with a different account on the
-same Apple ID, that account sees `ClaimSubscriptionView` instead of the paywall or the app: it can move
-the subscription to itself (no new charge, and Apple never grants a second trial) or sign out. A claim
-is stored on the device (`scriptori.subscriptionClaims`, original transaction ID → user ID) and on the
-profile (`claimedSubscriptionID`) so it follows the account to other devices. This is enforced on the
-device only: until billing has a backend, the previous account keeps access on devices where the claim
-never happened.
+**One account per subscription.** A subscription is bought by an Apple ID but locked to the Scriptori
+account that bought it (`SubscriptionOwnership`), identified by the transaction's `appAccountToken`.
+The purchase carries that token, so every device on the Apple ID reaches the same answer with no
+backend. If someone signs out and signs in with a different account on the same Apple ID, that account
+sees `SubscriptionLockedView` instead of the paywall or the app: it can sign out or open Apple's manage
+subscription sheet. Two exceptions are open to whichever account is signed in: purchases with no token
+(offer codes redeemed in the App Store, Family Sharing), and purchases by an account that was deleted
+on this device (`scriptori.releasedSubscriptionPurchasers`), so a subscription that is still billing
+isn't stranded. The release is device-local: on other devices a deleted account's subscription stays
+locked until it lapses. The token is derived from the account ID, so account IDs must stay stable.
 
 ## 3a. Backend & billing decisions
 
@@ -158,7 +159,6 @@ users/{uid}                         UserProfile
   streak { current, longest, lastCompletedDay "YYYY-MM-DD", lastRepairDay, recentDays[] }
   totalChaptersRead, reflectionCount
   subscription { tier, isInTrial, expiresAt, willAutoRenew }   // mirrored; the store is source of truth, written by Cloud Functions once added (see 3a)
-  claimedSubscriptionID                                        // original transaction ID of a subscription taken over from another account
   preferences { versesPerCard, typeface, ambientSound, remindersEnabled, reminderHour, reminderMinute }
   plan { planID, bookID, position, lastCompletedDay, lastCompletedChapterID, savedPositions{bookID: position} }
   onboarding { intent, familiarity, bookID, cue }

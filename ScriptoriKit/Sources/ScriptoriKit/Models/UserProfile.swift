@@ -186,9 +186,6 @@ public struct UserProfile: Codable, Hashable, Identifiable, Sendable {
     public var totalChaptersRead: Int
     public var reflectionCount: Int
     public var subscription: SubscriptionState
-    /// Original transaction ID of a subscription this account took over from the account
-    /// that bought it (see `SubscriptionOwnership`).
-    public var claimedSubscriptionID: String?
     public var preferences: ReadingPreferences
     public var plan: PlanProgress
     public var onboarding: OnboardingAnswers?
@@ -204,7 +201,6 @@ public struct UserProfile: Codable, Hashable, Identifiable, Sendable {
         totalChaptersRead: Int = 0,
         reflectionCount: Int = 0,
         subscription: SubscriptionState = .free,
-        claimedSubscriptionID: String? = nil,
         preferences: ReadingPreferences = ReadingPreferences(),
         plan: PlanProgress,
         onboarding: OnboardingAnswers? = nil,
@@ -219,7 +215,6 @@ public struct UserProfile: Codable, Hashable, Identifiable, Sendable {
         self.totalChaptersRead = totalChaptersRead
         self.reflectionCount = reflectionCount
         self.subscription = subscription
-        self.claimedSubscriptionID = claimedSubscriptionID
         self.preferences = preferences
         self.plan = plan
         self.onboarding = onboarding

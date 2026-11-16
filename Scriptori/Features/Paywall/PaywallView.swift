@@ -273,7 +273,6 @@ struct PaywallView: View {
         do {
             let token = model.profile.map { SubscriptionService.appAccountToken(for: $0.id) }
             if try await subscriptions.purchase(product, appAccountToken: token) {
-                await model.claimSubscription()
                 Haptics.chapterComplete()
                 try? await Task.sleep(for: .seconds(1.6))
                 if isDismissible { dismiss() }
