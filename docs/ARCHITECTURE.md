@@ -124,8 +124,13 @@ without converting). A local notification goes out 24 hours before a trial ends.
 account that bought it (`SubscriptionOwnership`), identified by the transaction's `appAccountToken`.
 The purchase carries that token, so every device on the Apple ID reaches the same answer with no
 backend. If someone signs out and signs in with a different account on the same Apple ID, that account
-sees `SubscriptionLockedView` instead of the paywall or the app: it can sign out or open Apple's manage
-subscription sheet. Two exceptions are open to whichever account is signed in: purchases with no token
+sees `SubscriptionLockedView` straight after sign-in (before onboarding, the paywall or the app) and
+can only sign out. Sign-up is closed the same way: tapping Create account first checks
+`AppModel.subscriptionBlocksNewAccounts()`, and while a locked subscription is active it shows that
+screen (with Log In / Back) without creating anything. Apple and Google only reveal that an account is
+new after Firebase has created it, so on either button a brand-new account is deleted again on the
+spot (`AuthError.newAccountBlocked`) and the same screen is shown. Two exceptions are open to whichever account
+is signed in: purchases with no token
 (offer codes redeemed in the App Store, Family Sharing), and purchases by an account that was deleted
 on this device (`scriptori.releasedSubscriptionPurchasers`), so a subscription that is still billing
 isn't stranded. The release is device-local: on other devices a deleted account's subscription stays

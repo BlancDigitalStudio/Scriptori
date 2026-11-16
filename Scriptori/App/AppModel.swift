@@ -104,10 +104,13 @@ final class AppModel {
     var phase: Phase {
         if isLaunching { return .launching }
         guard auth.session != nil, let profile else { return .signIn }
+        // A subscription locked to another account can't be used here, so a brand-new account
+        // goes straight to that screen instead of answering onboarding it will never finish.
+        if subscriptionOwnership == .other { return .subscriptionLocked }
         if Self.needsOnboarding(profile) { return .onboarding }
         if isHoldingPaywall { return .paywall }
         if hasPremiumAccess { return .main }
-        return subscriptionOwnership == .other ? .subscriptionLocked : .paywall
+        return .paywall
     }
 
     /// Onboarding follows the account, not the device: a profile that has neither answered
@@ -139,6 +142,13 @@ final class AppModel {
             userToken: SubscriptionService.appAccountToken(for: profile.id),
             releasedPurchasers: releasedPurchasers
         )
+    }
+
+    /// Checked before a new account is created: `true` when the Apple ID has a trial or
+    /// subscription that belongs to an existing account, so a new one could never use it.
+    func subscriptionBlocksNewAccounts() async -> Bool {
+        await subscriptions.refreshEntitlements()
+        return SubscriptionOwnership.isLocked(subscriptions.entitlement, releasedPurchasers: releasedPurchasers)
     }
 
     /// What the signed-in account is entitled to: the store's status, unless the

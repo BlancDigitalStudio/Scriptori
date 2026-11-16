@@ -39,10 +39,10 @@ struct PaywallView: View {
             .scrollIndicators(.hidden)
             .safeAreaInset(edge: .bottom) { purchaseBar }
 
-            if isDismissible {
-                VStack {
-                    HStack {
-                        Spacer()
+            VStack {
+                HStack {
+                    Spacer()
+                    if isDismissible {
                         Button { dismiss() } label: {
                             Image(systemName: "xmark")
                                 .font(.subheadline.weight(.bold))
@@ -50,11 +50,19 @@ struct PaywallView: View {
                                 .background(.ultraThinMaterial, in: .circle)
                         }
                         .accessibilityLabel("Close")
+                    } else {
+                        // The gate after sign-in: the only way back to the sign-in screen.
+                        Button("Sign Out") { model.signOut() }
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .frame(height: 32)
+                            .background(.ultraThinMaterial, in: .capsule)
+                            .disabled(isPurchasing)
                     }
-                    Spacer()
                 }
-                .padding()
+                Spacer()
             }
+            .padding()
         }
         .overlay { if isPurchasing { purchasingOverlay } }
         .animation(.easeInOut(duration: 0.3), value: isPurchasing)
@@ -68,11 +76,12 @@ struct PaywallView: View {
         }
     }
 
-    /// Covers the paywall while the purchase is in flight: the App Store sheet slides over this,
-    /// and it's what the reader sees once they confirm.
+    /// Replaces the paywall while the purchase is in flight: the App Store sheet slides over
+    /// this, and it's what the reader sees once they confirm. Opaque, so none of the paywall
+    /// shows through; cancelling the purchase fades it back in.
     private var purchasingOverlay: some View {
         ZStack {
-            Color.black.opacity(0.55).ignoresSafeArea()
+            PaletteBackground(palette: palette).ignoresSafeArea()
             VStack(spacing: 18) {
                 Image(systemName: "leaf.fill")
                     .font(.system(size: 72))

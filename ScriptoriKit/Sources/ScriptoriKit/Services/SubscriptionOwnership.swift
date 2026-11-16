@@ -37,7 +37,14 @@ public enum SubscriptionOwnership: Hashable, Sendable {
         releasedPurchasers: Set<UUID> = []
     ) -> SubscriptionOwnership {
         guard let entitlement else { return .none }
-        guard let purchaser = entitlement.purchaserToken, !releasedPurchasers.contains(purchaser) else { return .mine }
-        return purchaser == userToken ? .mine : .other
+        guard isLocked(entitlement, releasedPurchasers: releasedPurchasers) else { return .mine }
+        return entitlement.purchaserToken == userToken ? .mine : .other
+    }
+
+    /// Whether an existing account holds this subscription. While it does, no new account
+    /// can be created on the Apple ID: a new account could never be the one that bought it.
+    public static func isLocked(_ entitlement: SubscriptionEntitlement?, releasedPurchasers: Set<UUID> = []) -> Bool {
+        guard let purchaser = entitlement?.purchaserToken else { return false }
+        return !releasedPurchasers.contains(purchaser)
     }
 }

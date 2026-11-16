@@ -33,6 +33,16 @@ struct SubscriptionOwnershipTests {
         #expect(ownership == .mine)
     }
 
+    @Test func activeSubscriptionBlocksNewAccounts() {
+        #expect(SubscriptionOwnership.isLocked(entitlement(purchaser: buyerToken)))
+    }
+
+    @Test func newAccountsAreAllowedWithoutALockedSubscription() {
+        #expect(!SubscriptionOwnership.isLocked(nil))
+        #expect(!SubscriptionOwnership.isLocked(entitlement(purchaser: nil)))
+        #expect(!SubscriptionOwnership.isLocked(entitlement(purchaser: buyerToken), releasedPurchasers: [buyerToken]))
+    }
+
     @Test func releaseDoesNotOpenSomeoneElsesPurchase() {
         let thirdToken = UUID()
         let ownership = SubscriptionOwnership.resolve(

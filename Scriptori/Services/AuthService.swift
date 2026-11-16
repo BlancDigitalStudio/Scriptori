@@ -26,10 +26,15 @@ enum AuthError: LocalizedError {
     /// Deleting an account needs a recent sign-in; confirm identity with this provider, then retry.
     case requiresRecentLogin(AuthProvider)
     case notSignedIn
+    /// Apple or Google sign-in turned out to be a brand-new account while new accounts are
+    /// closed. The account was removed again; nothing was kept.
+    case newAccountBlocked
+    /// No account uses this email. Firebase only reports this with email enumeration
+    /// protection turned off; with it on, every rejected login is `invalidLogin`.
     case accountNotFound
-    case wrongPassword
-    /// The email belongs to an account that signs in with another provider (Google or Apple).
-    case useOtherProvider(String)
+    /// The email has an account but the password is wrong, or (with email enumeration
+    /// protection on) Firebase won't say which of the two failed.
+    case invalidLogin
     case emailInUse
     case invalidEmail
     case weakPassword
@@ -38,9 +43,8 @@ enum AuthError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .accountNotFound: "Account not found. Check the email address, or create an account."
-        case .wrongPassword: "Password incorrect. Please try again."
-        case .useOtherProvider(let provider): "This email is registered with \(provider). Log in with \(provider) instead."
+        case .accountNotFound: "Account not found."
+        case .invalidLogin: "Incorrect email or password."
         case .emailInUse: "An account with this email already exists. Try logging in instead."
         case .invalidEmail: "That email address doesn't look right."
         case .weakPassword: "Choose a stronger password (at least 8 characters)."
@@ -51,6 +55,7 @@ enum AuthError: LocalizedError {
         case .cancelled: nil
         case .requiresRecentLogin: "For your security, confirm it's you before deleting your account."
         case .notSignedIn: "Your sign-in has expired. Sign out, sign back in, then delete your account."
+        case .newAccountBlocked: "A new account can't be created while another account's subscription is active."
         }
     }
 }
@@ -81,7 +86,14 @@ final class AuthService {
     func restoreSession() async -> AuthSession? {
         #if canImport(FirebaseAuth)
         if Self.isFirebaseConfigured, let user = Auth.auth().currentUser {
-            session = AuthSession(user: user, provider: storedSession()?.provider ?? .email)
+            // Firebase keeps its user in the Keychain, which outlives the app; our own record
+            // doesn't. One without the other is a sign-in left over from a deleted install, so
+            // a reinstall starts at the sign-in screen.
+            guard let stored = storedSession() else {
+                signOut()
+                return nil
+            }
+            session = AuthSession(user: user, provider: stored.provider)
             return session
         }
         #endif
@@ -106,7 +118,9 @@ final class AuthService {
         request.nonce = Self.sha256(nonce)
     }
 
-    func completeAppleSignIn(_ result: Result<ASAuthorization, Error>) async throws -> AuthSession {
+    /// - Parameter allowsNewAccount: when `false`, a sign-in that would create an account is
+    ///   undone and throws `AuthError.newAccountBlocked`. Existing accounts sign in as usual.
+    func completeAppleSignIn(_ result: Result<ASAuthorization, Error>, allowsNewAccount: Bool = true) async throws -> AuthSession {
         let authorization: ASAuthorization
         switch result {
         case .success(let value): authorization = value
@@ -123,6 +137,13 @@ final class AuthService {
         if Self.isFirebaseConfigured {
             let firebaseCredential = try firebaseAppleCredential(from: credential)
             let result = try await Auth.auth().signIn(with: firebaseCredential)
+            if !allowsNewAccount, result.additionalUserInfo?.isNewUser == true {
+                // Apple keeps the app authorised unless its token is revoked along with the account.
+                if let codeData = credential.authorizationCode, let code = String(data: codeData, encoding: .utf8) {
+                    try? await Auth.auth().revokeToken(withAuthorizationCode: code)
+                }
+                try await discardNewAccount(uid: result.user.uid)
+            }
             var session = AuthSession(user: result.user, provider: .apple)
             session.displayName = session.displayName ?? name
             return persist(session)
@@ -134,7 +155,8 @@ final class AuthService {
 
     // MARK: Google
 
-    func signInWithGoogle() async throws -> AuthSession {
+    /// - Parameter allowsNewAccount: see `completeAppleSignIn(_:allowsNewAccount:)`.
+    func signInWithGoogle(allowsNewAccount: Bool = true) async throws -> AuthSession {
         #if canImport(FirebaseAuth) && canImport(GoogleSignIn)
         guard Self.isFirebaseConfigured, let clientID = FirebaseApp.app()?.options.clientID else {
             throw AuthError.backendNotConfigured
@@ -145,6 +167,9 @@ final class AuthService {
         guard let idToken = result.user.idToken?.tokenString else { throw AuthError.missingIdentityToken }
         let credential = GoogleAuthProvider.credential(withIDToken: idToken, accessToken: result.user.accessToken.tokenString)
         let authResult = try await Auth.auth().signIn(with: credential)
+        if !allowsNewAccount, authResult.additionalUserInfo?.isNewUser == true {
+            try await discardNewAccount(uid: authResult.user.uid)
+        }
         return persist(AuthSession(user: authResult.user, provider: .google))
         #else
         throw AuthError.backendNotConfigured
@@ -162,7 +187,7 @@ final class AuthService {
                     : try await Auth.auth().signIn(withEmail: email, password: password)
                 return persist(AuthSession(user: result.user, provider: .email))
             } catch {
-                throw await Self.friendlyEmailError(error, email: email, creatingAccount: createAccount)
+                throw Self.friendlyEmailError(error, creatingAccount: createAccount)
             }
         }
         #endif
@@ -275,10 +300,25 @@ final class AuthService {
     // MARK: Helpers
 
     #if canImport(FirebaseAuth)
-    /// Turns Firebase's email/password failures into messages a reader can act on. Firebase often
-    /// reports a wrong password and an unknown email as the same `invalidCredential` ("malformed
-    /// or has expired"), so that case looks the email up to tell the two apart.
-    private static func friendlyEmailError(_ error: Error, email: String, creatingAccount: Bool) async -> Error {
+    /// Apple and Google only reveal that an account is new once Firebase has created it, so a
+    /// blocked sign-up is undone here: the account is deleted before anything is saved to it.
+    ///
+    /// Only the account Firebase just reported as new is deleted: `uid` comes from that sign-in
+    /// result, and the delete is skipped if the signed-in user is anyone else.
+    private func discardNewAccount(uid: String) async throws -> Never {
+        if let user = Auth.auth().currentUser, user.uid == uid { try? await user.delete() }
+        signOut()
+        throw AuthError.newAccountBlocked
+    }
+
+    /// Turns Firebase's email/password failures into messages a reader can act on.
+    ///
+    /// An unknown email reads "Account not found" and a wrong password "Incorrect email or
+    /// password", which needs email enumeration protection turned off in the Firebase console
+    /// (Authentication > Settings > User actions). With it on, both come back as
+    /// `invalidCredential` and looking the email up isn't trustworthy either, so both share the
+    /// second message instead of guessing which half failed.
+    private static func friendlyEmailError(_ error: Error, creatingAccount: Bool) -> Error {
         let nsError = error as NSError
         guard nsError.domain == AuthErrorDomain, let code = AuthErrorCode(rawValue: nsError.code) else { return error }
         switch code {
@@ -288,38 +328,10 @@ final class AuthService {
         case .tooManyRequests: return AuthError.tooManyAttempts
         case .networkError: return AuthError.offline
         case .userNotFound: return AuthError.accountNotFound
-        case .wrongPassword: return AuthError.wrongPassword
-        case .invalidCredential where !creatingAccount:
-            return await diagnoseRejectedLogin(email: email) ?? error
+        case .wrongPassword: return AuthError.invalidLogin
+        case .invalidCredential where !creatingAccount: return AuthError.invalidLogin
         default: return error
         }
-    }
-
-    /// Requires "Email enumeration protection" to be turned off in the Firebase console. With it
-    /// on, Firebase deliberately returns an empty list for every email, so every rejected login
-    /// would read as "account not found".
-    ///
-    /// Firebase deprecated `fetchSignInMethods` and offers no replacement. Calling it through a
-    /// protocol requirement keeps that deprecation from surfacing as a build warning.
-    private protocol SignInMethodsLookup {
-        static func signInMethods(for email: String) async -> [String]?
-    }
-
-    private enum FirebaseSignInMethodsLookup: SignInMethodsLookup {
-        @available(*, deprecated)
-        static func signInMethods(for email: String) async -> [String]? {
-            try? await Auth.auth().fetchSignInMethods(forEmail: email)
-        }
-    }
-
-    private static func diagnoseRejectedLogin(email: String) async -> AuthError? {
-        let lookup: SignInMethodsLookup.Type = FirebaseSignInMethodsLookup.self
-        guard let methods = await lookup.signInMethods(for: email) else { return nil }
-        if methods.isEmpty { return .accountNotFound }
-        if methods.contains(EmailAuthProvider.id) { return .wrongPassword }
-        if methods.contains(GoogleAuthProvider.id) { return .useOtherProvider("Google") }
-        if methods.contains("apple.com") { return .useOtherProvider("Apple") }
-        return nil
     }
 
     private func firebaseAppleCredential(from credential: ASAuthorizationAppleIDCredential) throws -> OAuthCredential {
