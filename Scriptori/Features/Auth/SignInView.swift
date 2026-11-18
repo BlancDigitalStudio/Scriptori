@@ -1,4 +1,5 @@
 import AuthenticationServices
+import CryptoKit
 import SwiftUI
 import UIKit
 
@@ -191,8 +192,8 @@ struct SignInView: View {
 /// Email form styled to match the sign-in screen: the meadow palette, not the system purple tint.
 ///
 /// iOS offers to save a password whenever a filled password field leaves the screen. The sheet
-/// stays up when sign-in fails, and it only leaves with a "new password" field after an account
-/// is actually created — that's the one time the Save Password prompt should appear.
+/// stays up when sign-in fails, and it only leaves with the password still in the field when
+/// the Save Password prompt should appear (see `PasswordSaveOffer`).
 private struct EmailSignInSheet: View {
     let isCreating: Bool
     @Environment(AppModel.self) private var model
@@ -304,7 +305,9 @@ private struct EmailSignInSheet: View {
         Task {
             do {
                 let session = try await model.auth.signIn(email: email, password: password, createAccount: isCreating)
-                if !isCreating { await stopPasswordSavePrompt() }
+                let offersSave = isCreating || PasswordSaveOffer.isDue(for: email)
+                PasswordSaveOffer.recordLogin(for: email)
+                if !offersSave { await stopPasswordSavePrompt() }
                 await model.didSignIn(session)
             } catch AuthError.cancelled {
                 isWorking = false
@@ -321,19 +324,49 @@ private struct EmailSignInSheet: View {
         dismiss()
     }
 
-    /// `.password` and `.newPassword` both make iOS offer to save when the field goes away.
-    /// Switching to a non-password type, and letting that reach the text field, skips the prompt.
+    /// iOS offers to save when a password field that still holds text goes away. Emptying the
+    /// field is what reliably skips the prompt; switching it to a non-password type as well
+    /// covers the case where the text field hasn't caught up yet.
     private func stopPasswordSavePrompt() async {
+        password = ""
         passwordContentType = .oneTimeCode
         try? await Task.sleep(for: .milliseconds(100))
         PasswordSavePrompt.suppress()
     }
 }
 
+/// When iOS may offer to save the password: on creating an account, and on a login when this
+/// device last logged that email in 30 or more days ago. A first login on this device has no
+/// earlier login to measure from, so it doesn't offer.
+private enum PasswordSaveOffer {
+    private static let key = "scriptori.lastEmailLogins"
+    private static let interval: TimeInterval = 30 * 24 * 60 * 60
+
+    static func isDue(for email: String, now: Date = .now) -> Bool {
+        guard let last = logins[id(for: email)] else { return false }
+        return now.timeIntervalSince(last) >= interval
+    }
+
+    static func recordLogin(for email: String, now: Date = .now) {
+        var all = logins
+        all[id(for: email)] = now
+        UserDefaults.standard.set(all, forKey: key)
+    }
+
+    private static var logins: [String: Date] {
+        UserDefaults.standard.dictionary(forKey: key) as? [String: Date] ?? [:]
+    }
+
+    /// The email itself isn't stored, only a digest of it.
+    private static func id(for email: String) -> String {
+        SHA256.hash(data: Data(email.lowercased().utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
 /// iOS decides to show "Save Password?" from the underlying text field, which SwiftUI can reset.
 /// This clears that type directly, after the SwiftUI value has already changed.
+@MainActor
 private enum PasswordSavePrompt {
-    @MainActor
     static func suppress() {
         for scene in UIApplication.shared.connectedScenes {
             guard let scene = scene as? UIWindowScene else { continue }

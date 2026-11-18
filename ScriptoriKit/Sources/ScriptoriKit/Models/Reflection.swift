@@ -57,8 +57,8 @@ public struct ReflectionEntry: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public let chapterID: String
     public let chapterReference: String
-    public let day: DayKey
-    public let createdAt: Date
+    public private(set) var day: DayKey
+    public private(set) var createdAt: Date
     public var mood: Mood?
     public var takeaways: [String]
     public var answers: [ReflectionAnswer]
@@ -110,8 +110,24 @@ public struct ReflectionEntry: Codable, Hashable, Identifiable, Sendable {
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt)
     }
 
+    /// An unfinished check-in picked up on a later day: the reader's picks and answers, dated
+    /// `day` so the entry lands in the journal on the day it is actually finished.
+    public func carried(to day: DayKey, at date: Date = .now) -> ReflectionEntry {
+        guard day != self.day else { return self }
+        var entry = self
+        entry.day = day
+        entry.createdAt = date
+        return entry
+    }
+
     /// When the entry last changed, for picking the newest copy during sync.
     public var lastModified: Date { updatedAt ?? createdAt }
+
+    /// Whether this copy was changed more recently than `other`, ignoring differences under a
+    /// millisecond (see `ChapterProgress.isNewer(than:)`). Used for unfinished check-ins.
+    public func isNewer(than other: ReflectionEntry) -> Bool {
+        lastModified.timeIntervalSince(other.lastModified) > 0.001
+    }
 
     /// Merges two copies of the same journal, keeping the most recently edited version
     /// of each entry. Newest entries first.

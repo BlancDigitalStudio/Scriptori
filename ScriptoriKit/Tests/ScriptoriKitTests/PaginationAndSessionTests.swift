@@ -129,8 +129,87 @@ struct ChapterSessionTests {
         let session = ChapterSession(chapter: chapter, day: day, versesPerCard: 2, restoring: saved)
         #expect(session.focusedItemID == "verses-9")
 
-        let stale = ChapterSession(chapter: chapter, day: day.adding(days: 1), versesPerCard: 2, restoring: saved)
-        #expect(stale.focusedItemID == "intro")
+    }
+
+    @Test func unfinishedChapterCarriesOverToALaterDay() {
+        let chapter = makeChapter()
+        let tomorrow = day.adding(days: 1)
+        let saved = ChapterProgress(chapterID: chapter.id, day: day, anchorVerse: 9, furthestVerse: 10, markedVerses: [3, 9], notes: [10: "note"])
+        let session = ChapterSession(chapter: chapter, day: tomorrow, versesPerCard: 2, restoring: saved)
+        #expect(session.focusedItemID == "verses-9")
+        #expect(session.progress.day == tomorrow)
+        #expect(session.progress.furthestVerse == 10)
+        #expect(session.progress.markedVerses == [3, 9])
+        #expect(session.progress.notes == [10: "note"])
+    }
+
+    @Test func changesAreStampedSoTheNewestCopyWinsAcrossDevices() throws {
+        let chapter = makeChapter()
+        let untouched = ChapterSession(chapter: chapter, day: day, versesPerCard: 2)
+        #expect(untouched.progress.updatedAt == nil)
+
+        let phone = ChapterSession(chapter: chapter, day: day, versesPerCard: 2)
+        phone.focus(on: "verses-3")
+        let afterMove = try #require(phone.progress.updatedAt)
+        phone.toggleMark(try #require(phone.focusedPage))
+        let afterMark = try #require(phone.progress.updatedAt)
+        #expect(afterMark >= afterMove)
+
+        #expect(phone.progress.isNewer(than: untouched.progress))
+        #expect(!untouched.progress.isNewer(than: phone.progress))
+        #expect(!phone.progress.isNewer(than: phone.progress))
+
+        // Survives a save and reload, and being carried to another day.
+        let reloaded = try JSONDecoder().decode(ChapterProgress.self, from: JSONEncoder().encode(phone.progress))
+        #expect(reloaded == phone.progress)
+        #expect(phone.progress.carried(to: day.adding(days: 1)).updatedAt == afterMark)
+    }
+
+    @Test func chapterFinishedElsewhereOpensOnTheLastCardWithItsMarks() {
+        let chapter = makeChapter()
+        let finishedAt = Date(timeIntervalSince1970: 1_000)
+        let rebuilt = ChapterProgress.completed(chapter: chapter, day: day, at: finishedAt, markedVerses: [3, 9])
+        #expect(rebuilt.isCompleted)
+        #expect(rebuilt.hasFinishedVerses(of: chapter))
+
+        let session = ChapterSession(chapter: chapter, day: day, versesPerCard: 2, restoring: rebuilt)
+        #expect(session.focusedItemID == "reflection")
+        #expect(session.progress.completedAt == finishedAt)
+        #expect(session.markedVerses.map(\.number) == [3, 9])
+    }
+
+    @Test func adoptsReadingDoneOnAnotherDeviceWithoutReportingIt() {
+        let chapter = makeChapter()
+        let session = ChapterSession(chapter: chapter, day: day, versesPerCard: 2)
+        var reported = 0
+        session.onProgressChange = { _ in reported += 1 }
+
+        // The other device shows 3 verses per card and is a day behind on the calendar.
+        let remote = ChapterProgress(chapterID: chapter.id, day: day.adding(days: -1), anchorVerse: 7, furthestVerse: 9, markedVerses: [7, 8, 9], notes: [9: "note"], updatedAt: .now)
+        session.adopt(remote)
+        #expect(session.focusedItemID == "verses-7")
+        #expect(session.progress.day == day)
+        #expect(session.progress.furthestVerse == 9)
+        #expect(session.markedVerses.map(\.number) == [7, 8, 9])
+        #expect(session.progress.updatedAt == remote.updatedAt)
+        #expect(reported == 0)
+
+        session.adopt(ChapterProgress(chapterID: "OTHER.1", day: day, anchorVerse: 1, furthestVerse: 2))
+        #expect(session.focusedItemID == "verses-7")
+    }
+
+    @Test func finishedOrDifferentChapterStartsFresh() {
+        let chapter = makeChapter()
+        let tomorrow = day.adding(days: 1)
+        let finished = ChapterProgress(chapterID: chapter.id, day: day, anchorVerse: 9, furthestVerse: 10, completedAt: .now, markedVerses: [3])
+        let reread = ChapterSession(chapter: chapter, day: tomorrow, versesPerCard: 2, restoring: finished)
+        #expect(reread.focusedItemID == "intro")
+        #expect(reread.progress.markedVerses.isEmpty)
+
+        let other = ChapterProgress(chapterID: "OTHER.1", day: day, anchorVerse: 9, furthestVerse: 10, markedVerses: [3])
+        let next = ChapterSession(chapter: chapter, day: day, versesPerCard: 2, restoring: other)
+        #expect(next.focusedItemID == "intro")
+        #expect(next.progress.markedVerses.isEmpty)
     }
 }
 

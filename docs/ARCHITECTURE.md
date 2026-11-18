@@ -167,6 +167,9 @@ users/{uid}                         UserProfile
   preferences { versesPerCard, typeface, ambientSound, remindersEnabled, reminderHour, reminderMinute }
   plan { planID, bookID, position, lastCompletedDay, lastCompletedChapterID, savedPositions{bookID: position} }
   onboarding { intent, familiarity, bookID, cue }
+  chapterProgress { chapterID, day, anchorVerse, furthestVerse, reachedReflection, completedAt,
+                    markedVerses[], notes{verse: text}, updatedAt }   // position and bookmarks in the current chapter; newest `updatedAt` wins across devices
+  reflectionDraft { ...ReflectionEntry }                         // an unfinished check-in for that chapter; removed once it is submitted
 users/{uid}/reflections/{uuid}      ReflectionEntry
   chapterID, chapterReference, day, createdAt, updatedAt, mood, takeaways[], highlights[],
   answers[{questionID, prompt, choice, text}]

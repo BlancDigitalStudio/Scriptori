@@ -18,12 +18,15 @@
   ],
   "settings" : {
     "_askToBuyEnabled" : false,
-    "_billingGracePeriodEnabled" : false,
+    "_billingGracePeriodEnabled" : true,
     "_billingIssuesEnabled" : false,
+    "_compatibilityTimeRate" : {
+      "3" : 6
+    },
     "_disableDialogs" : false,
     "_failTransactionsEnabled" : false,
     "_locale" : "en_US",
-    "_renewalBillingIssuesEnabled" : false,
+    "_renewalBillingIssuesEnabled" : true,
     "_storefront" : "USA",
     "_storeKitErrors" : [
       {
@@ -99,7 +102,7 @@
         "name" : "Offer Code Redeem Sheet"
       }
     ],
-    "_timeRate" : 0
+    "_timeRate" : 1002
   },
   "subscriptionGroups" : [
     {

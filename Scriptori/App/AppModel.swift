@@ -24,6 +24,17 @@ final class AppModel {
     @ObservationIgnored private let sync: ProfileSyncing = SyncFactory.make()
     @ObservationIgnored private let completion = ChapterCompletionService()
     @ObservationIgnored private var content: BibleContentProviding?
+    @ObservationIgnored private var draftWrite: Task<Void, Never>?
+    /// The latest reading position not yet sent to the cloud, and the timer that sends it.
+    @ObservationIgnored private var unsentProgress: (progress: ChapterProgress, userID: String)?
+    @ObservationIgnored private var progressPush: Task<Void, Never>?
+    @ObservationIgnored private var unsentDraft: (draft: ReflectionEntry, userID: String)?
+    @ObservationIgnored private var draftPush: Task<Void, Never>?
+    /// Listens for reading done on the account's other devices while this one is open.
+    @ObservationIgnored private var cloudReadingUpdates: (userID: String, task: Task<Void, Never>)?
+    /// `updatedAt` of the last cloud position acted on when returning to the app, so one
+    /// that can't be used here isn't reconsidered on every return.
+    @ObservationIgnored private var handledCloudProgressAt: Date?
 
     private(set) var isLaunching = true
     private(set) var profile: UserProfile?
@@ -106,7 +117,9 @@ final class AppModel {
         guard auth.session != nil, let profile else { return .signIn }
         // A subscription locked to another account can't be used here, so a brand-new account
         // goes straight to that screen instead of answering onboarding it will never finish.
-        if subscriptionOwnership == .other { return .subscriptionLocked }
+        // Only while it's still renewing: a cancelled plan is on its way out, so the reader
+        // gets the paywall (with a note about when they can subscribe) instead of a dead end.
+        if subscriptionOwnership == .other, otherAccountPlanEndsAt == nil { return .subscriptionLocked }
         if Self.needsOnboarding(profile) { return .onboarding }
         if isHoldingPaywall { return .paywall }
         if hasPremiumAccess { return .main }
@@ -142,6 +155,13 @@ final class AppModel {
             userToken: SubscriptionService.appAccountToken(for: profile.id),
             releasedPurchasers: releasedPurchasers
         )
+    }
+
+    /// When another account's cancelled plan on this Apple ID runs out, or `nil` if there is no
+    /// such plan. It still has paid time left, so it can't be bought again from this account yet.
+    var otherAccountPlanEndsAt: Date? {
+        guard subscriptionOwnership == .other, !subscriptions.status.willAutoRenew else { return nil }
+        return subscriptions.status.expiresAt
     }
 
     /// Checked before a new account is created: `true` when the Apple ID has a trial or
@@ -214,7 +234,14 @@ final class AppModel {
         if let today, today.session.progress.day != DayKey(.now) {
             await loadToday()
         }
+        await pullReading()
         await notifications.refresh(for: profile, engine: streakEngine)
+    }
+
+    /// Leaving the app is when another device is most likely to be picked up next.
+    func handleEnteredBackground() async {
+        await sendUnsentProgress()
+        await sendUnsentDraft()
     }
 
     func completeOnboarding(answers: OnboardingAnswers, remindersEnabled: Bool, reminderTime: Date, versesPerCard: Int) async {
@@ -259,25 +286,57 @@ final class AppModel {
         }
     }
 
-    /// Keeps an unfinished check-in so closing the sheet doesn't lose the reader's picks.
+    /// Keeps an unfinished check-in as it is filled in, so the reader's picks and answers
+    /// survive however the sheet goes away: closed, replaced by the paywall, or the app quit.
     func saveReflectionDraft(_ entry: ReflectionEntry) {
         guard let profile, let today, entry.chapterID == today.chapter.id,
               !today.session.progress.isCompleted else { return }
+        // `updatedAt` is this method's own stamp (newest draft wins across devices), so it
+        // is left out when checking whether anything the reader entered has changed.
+        var entry = entry
+        entry.updatedAt = reflectionDraft?.updatedAt
+        guard entry != reflectionDraft else { return }
+        entry.updatedAt = .now
         reflectionDraft = entry
-        Task { try? await store.save(entry, for: .reflectionDraft, namespace: profile.id) }
+        let store = store
+        let userID = profile.id
+        let saved = entry
+        writeDraft { try? await store.save(saved, for: .reflectionDraft, namespace: userID) }
+        queueDraftPush(entry, userID: userID)
     }
 
     private func clearReflectionDraft(userID: String) async {
         reflectionDraft = nil
-        await store.remove(.reflectionDraft, namespace: userID)
+        dropUnsentDraft()
+        let store = store
+        await writeDraft { await store.remove(.reflectionDraft, namespace: userID) }.value
+        try? await sync.push(draft: nil, userID: userID)
+    }
+
+    /// Draft writes run one after another, in the order they were made; a save per keystroke
+    /// must never land after a newer one, or after the draft was cleared.
+    @discardableResult
+    private func writeDraft(_ write: @escaping @Sendable () async -> Void) -> Task<Void, Never> {
+        let task = Task { [previous = draftWrite] in
+            await previous?.value
+            await write()
+        }
+        draftWrite = task
+        return task
     }
 
     func didSignIn(_ session: AuthSession) async {
+        // Which account owns the subscription is decided as soon as the profile loads; make
+        // sure that isn't judged on a subscription that has since expired.
+        await subscriptions.refreshEntitlements()
         await loadProfile(for: session)
     }
 
     func signOut() {
         audio.reset()
+        stopFollowingCloudReading()
+        dropUnsentProgress()
+        dropUnsentDraft()
         auth.signOut()
         profile = nil
         today = nil
@@ -296,6 +355,10 @@ final class AppModel {
         try auth.requireRecentSignIn()
         let token = SubscriptionService.appAccountToken(for: profile.id)
         let heldSubscription = subscriptions.entitlement?.purchaserToken == token
+        // A position or draft sent after the delete would bring the account's document back.
+        stopFollowingCloudReading()
+        dropUnsentProgress()
+        dropUnsentDraft()
         // Remote data must go while still signed in; Firestore rules only allow the owner.
         try? await sync.deleteAll(userID: profile.id)
         try await auth.deleteAccount()
@@ -356,12 +419,162 @@ final class AppModel {
 
         await persistProfile()
         audio.setSound(resolved.preferences.ambientSound)
-        await loadToday()
+        await loadToday(cloud: await fetchCloudReading(userID: session.userID))
+        followCloudReading(userID: session.userID)
         await notifications.refresh(for: resolved, engine: streakEngine)
         await retryPendingSync()
     }
 
+    // MARK: Reading position and unfinished check-in across devices
+
+    /// What the account holds for the chapter in progress, or `.unavailable` when it couldn't
+    /// be read (offline), which must not be mistaken for "nothing saved yet".
+    private enum Cloud {
+        case unavailable
+        case fetched(CloudReading)
+    }
+
+    private func fetchCloudReading(userID: String) async -> Cloud {
+        do {
+            return .fetched(try await sync.fetchReading(userID: userID))
+        } catch {
+            return .unavailable
+        }
+    }
+
+    /// Picks between this device's saved position and the account's for `chapterID`: whichever
+    /// was changed last. Progress for any other chapter is never adopted, so it can't replace
+    /// where the reader is on this device. If this device is ahead, the account is updated.
+    private func settleProgress(local: ChapterProgress?, cloud: Cloud, chapterID: String, userID: String) async -> ChapterProgress? {
+        guard case .fetched(let reading) = cloud else { return local }
+        let remote = reading.progress
+        let localIsCurrent = local?.chapterID == chapterID
+        if let remote, remote.chapterID == chapterID, !localIsCurrent || remote.isNewer(than: local!) {
+            handledCloudProgressAt = remote.updatedAt
+            try? await store.save(remote, for: .chapterProgress, namespace: userID)
+            return remote
+        }
+        if let local, localIsCurrent, remote.map({ $0.chapterID != chapterID || local.isNewer(than: $0) }) ?? true {
+            try? await sync.push(progress: local, userID: userID)
+        }
+        return local
+    }
+
+    /// The same choice for an unfinished check-in on `chapterID`: the copy changed last wins.
+    private func settleDraft(local: ReflectionEntry?, cloud: Cloud, chapterID: String, userID: String) async -> ReflectionEntry? {
+        guard case .fetched(let reading) = cloud else { return local }
+        let remote = reading.draft
+        let localIsCurrent = local?.chapterID == chapterID
+        if let remote, remote.chapterID == chapterID, !localIsCurrent || remote.isNewer(than: local!) {
+            let store = store
+            await writeDraft { try? await store.save(remote, for: .reflectionDraft, namespace: userID) }.value
+            return remote
+        }
+        if let local, localIsCurrent, remote.map({ $0.chapterID != chapterID || local.isNewer(than: $0) }) ?? true {
+            try? await sync.push(draft: local, userID: userID)
+        }
+        return local
+    }
+
+    /// Sends the position a couple of seconds after the reader stops swiping, not per card.
+    private func queueProgressPush(_ progress: ChapterProgress, userID: String) {
+        unsentProgress = (progress, userID)
+        progressPush?.cancel()
+        progressPush = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            await self?.sendUnsentProgress()
+        }
+    }
+
+    private func sendUnsentProgress() async {
+        guard let unsent = unsentProgress else { return }
+        unsentProgress = nil
+        try? await sync.push(progress: unsent.progress, userID: unsent.userID)
+    }
+
+    private func dropUnsentProgress() {
+        progressPush?.cancel()
+        progressPush = nil
+        unsentProgress = nil
+    }
+
+    /// Sends the check-in a couple of seconds after the reader stops typing, not per keystroke.
+    private func queueDraftPush(_ draft: ReflectionEntry, userID: String) {
+        unsentDraft = (draft, userID)
+        draftPush?.cancel()
+        draftPush = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            await self?.sendUnsentDraft()
+        }
+    }
+
+    private func sendUnsentDraft() async {
+        guard let unsent = unsentDraft else { return }
+        unsentDraft = nil
+        try? await sync.push(draft: unsent.draft, userID: unsent.userID)
+    }
+
+    private func dropUnsentDraft() {
+        draftPush?.cancel()
+        draftPush = nil
+        unsentDraft = nil
+    }
+
+    /// Keeps this device in step with the account's other devices while the app is open,
+    /// so reading on one shows up on the other without relaunching.
+    private func followCloudReading(userID: String) {
+        guard cloudReadingUpdates?.userID != userID else { return }
+        stopFollowingCloudReading()
+        let updates = sync.readingUpdates(userID: userID)
+        let task = Task { [weak self] in
+            for await reading in updates {
+                await self?.applyCloudReading(reading, userID: userID)
+            }
+        }
+        cloudReadingUpdates = (userID, task)
+    }
+
+    private func stopFollowingCloudReading() {
+        cloudReadingUpdates?.task.cancel()
+        cloudReadingUpdates = nil
+    }
+
+    /// On returning to the app: picks up reading and check-in answers from another device.
+    private func pullReading() async {
+        guard let profile, case .fetched(let reading) = await fetchCloudReading(userID: profile.id) else { return }
+        await applyCloudReading(reading, userID: profile.id)
+    }
+
+    /// Takes what another device saved to the account when it is newer than what's here.
+    private func applyCloudReading(_ reading: CloudReading, userID: String) async {
+        guard let profile, profile.id == userID, let session = auth.session, let current = today else { return }
+
+        if let remote = reading.progress, remote.updatedAt != handledCloudProgressAt,
+           remote.isNewer(than: current.session.progress) {
+            handledCloudProgressAt = remote.updatedAt
+            guard remote.chapterID == current.chapter.id, !remote.isCompleted else {
+                // The other device finished this chapter or moved to another: that is in the profile.
+                await loadProfile(for: session)
+                return
+            }
+            current.session.adopt(remote)
+            try? await store.save(current.session.progress, for: .chapterProgress, namespace: userID)
+        }
+
+        // Same place in the chapter; the check-in may still have moved on elsewhere.
+        guard !current.session.progress.isCompleted else { return }
+        let settled = await settleDraft(local: reflectionDraft, cloud: .fetched(reading), chapterID: current.chapter.id, userID: profile.id)
+        let draft = settled?.carried(to: current.session.progress.day)
+        if draft != reflectionDraft { reflectionDraft = draft }
+    }
+
     func loadToday() async {
+        await loadToday(cloud: .unavailable)
+    }
+
+    private func loadToday(cloud: Cloud) async {
         guard let profile, let content else { return }
         let day = DayKey(.now)
         let assignment: DailyAssignment
@@ -380,16 +593,32 @@ final class AppModel {
         }
         do {
             let chapter = try await content.chapter(id: assignment.chapterID)
-            let saved = await store.load(ChapterProgress.self, for: .chapterProgress, namespace: profile.id)
+            let local = await store.load(ChapterProgress.self, for: .chapterProgress, namespace: profile.id)
+            var saved = await settleProgress(local: local, cloud: cloud, chapterID: chapter.id, userID: profile.id)
+            // Finished today according to the plan, but the reading record for it isn't here
+            // (it was finished on another device): rebuild it from the journal entry, so Today
+            // opens on the finished last card with the verses that were marked.
+            if assignment.isCompletedToday, !(saved?.chapterID == chapter.id && saved?.isCompleted == true) {
+                let entry = reflections.first { $0.chapterID == chapter.id && $0.day == day }
+                    ?? reflections.first { $0.chapterID == chapter.id }
+                saved = .completed(chapter: chapter, day: day, at: entry?.createdAt ?? .now, markedVerses: entry?.highlights ?? [])
+            }
             let session = ChapterSession(chapter: chapter, day: day, versesPerCard: profile.preferences.versesPerCard, restoring: saved)
             let store = store
             let userID = profile.id
-            session.onProgressChange = { progress in
+            session.onProgressChange = { [weak self] progress in
                 Task { try? await store.save(progress, for: .chapterProgress, namespace: userID) }
+                self?.queueProgressPush(progress, userID: userID)
             }
             today = TodayContext(assignment: assignment, chapter: chapter, session: session)
-            let draft = await store.load(ReflectionEntry.self, for: .reflectionDraft, namespace: profile.id)
-            reflectionDraft = draft.flatMap { $0.chapterID == chapter.id && $0.day == day && !session.progress.isCompleted ? $0 : nil }
+            // Like the reading position, an unfinished check-in carries over to a later day.
+            if session.progress.isCompleted {
+                reflectionDraft = nil
+            } else {
+                let localDraft = await store.load(ReflectionEntry.self, for: .reflectionDraft, namespace: profile.id)
+                let draft = await settleDraft(local: localDraft, cloud: cloud, chapterID: chapter.id, userID: profile.id)
+                reflectionDraft = draft.flatMap { $0.chapterID == chapter.id ? $0.carried(to: day) : nil }
+            }
         } catch {
             errorMessage = "Couldn't open \(assignment.chapterID)."
         }
@@ -401,6 +630,9 @@ final class AppModel {
     @discardableResult
     func submitReflection(_ entry: ReflectionEntry) async throws(CompletionError) -> CompletionResult? {
         guard let profile, let today else { return nil }
+        // A check-in resumed from a draft carries the draft's save time; a new entry has no edits.
+        var entry = entry
+        entry.updatedAt = nil
         let result = try completion.complete(
             chapter: today.chapter,
             progress: today.session.progress,

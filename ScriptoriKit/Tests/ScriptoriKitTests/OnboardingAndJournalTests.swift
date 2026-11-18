@@ -108,6 +108,40 @@ struct JournalTests {
         #expect(decoded.lastModified == decoded.createdAt)
     }
 
+    @Test func unfinishedCheckInCarriesOverToALaterDay() {
+        var draft = ReflectionEntry(chapter: chapter, day: day, createdAt: Date(timeIntervalSince1970: 1_000), mood: .weary)
+        draft.takeaways = ["rest"]
+        let tomorrow = day.adding(days: 1)
+        let resumedAt = Date(timeIntervalSince1970: 90_000)
+
+        let carried = draft.carried(to: tomorrow, at: resumedAt)
+        #expect(carried.id == draft.id)
+        #expect(carried.day == tomorrow)
+        #expect(carried.createdAt == resumedAt)
+        #expect(carried.mood == .weary)
+        #expect(carried.takeaways == ["rest"])
+        #expect(carried.answers == draft.answers)
+
+        #expect(draft.carried(to: day, at: resumedAt) == draft)
+    }
+
+    @Test func newestCheckInDraftWinsAcrossDevices() {
+        let opened = Date(timeIntervalSince1970: 1_000)
+        let phone = ReflectionEntry(chapter: chapter, day: day, createdAt: opened, mood: .weary)
+        var tablet = phone
+        tablet.mood = .hopeful
+        tablet.updatedAt = opened.addingTimeInterval(60)
+
+        #expect(tablet.isNewer(than: phone))
+        #expect(!phone.isNewer(than: tablet))
+        #expect(!tablet.isNewer(than: tablet))
+
+        // The cloud stores times less precisely; the same draft must not look newer than itself.
+        var roundTripped = tablet
+        roundTripped.updatedAt = tablet.updatedAt?.addingTimeInterval(0.0000004)
+        #expect(!roundTripped.isNewer(than: tablet))
+    }
+
     @Test func everyMoodHasAnIcon() {
         #expect(Set(Mood.allCases.map(\.symbol)).count == Mood.allCases.count)
     }

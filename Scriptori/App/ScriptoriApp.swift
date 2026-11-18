@@ -30,8 +30,11 @@ struct ScriptoriApp: App {
                 #endif
         }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            Task { await model.handleBecameActive() }
+            switch phase {
+            case .active: Task { await model.handleBecameActive() }
+            case .background: Task { await model.handleEnteredBackground() }
+            default: break
+            }
         }
     }
 }

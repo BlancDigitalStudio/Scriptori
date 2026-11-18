@@ -31,6 +31,10 @@ final class SubscriptionService {
 
     @ObservationIgnored var onStatusChange: (@MainActor (SubscriptionState) -> Void)?
     @ObservationIgnored private var updatesTask: Task<Void, Never>?
+    @ObservationIgnored private var statusUpdatesTask: Task<Void, Never>?
+    @ObservationIgnored private var expiryTask: Task<Void, Never>?
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored private var refreshRequested = false
 
     var monthly: Product? { products.first { $0.id == ProductID.monthly } }
     var annual: Product? { products.first { $0.id == ProductID.annual } }
@@ -52,8 +56,31 @@ final class SubscriptionService {
                 await self?.refreshEntitlements()
             }
         }
+        // Expiry and cancellation change the status without producing a transaction.
+        statusUpdatesTask = Task.detached { [weak self] in
+            for await _ in Product.SubscriptionInfo.Status.updates {
+                await self?.refreshEntitlements()
+            }
+        }
         await loadProducts()
         await refreshEntitlements()
+    }
+
+    /// A cancelled subscription ends without any StoreKit event the app is guaranteed to
+    /// see while it's open, so the entitlement is re-read the moment it runs out. Otherwise
+    /// it would keep granting access, or keep other accounts locked out, until the next launch.
+    /// The same goes for the end of a billing grace period.
+    private func scheduleExpiryRefresh(for state: SubscriptionState, inGracePeriod: Bool) {
+        expiryTask?.cancel()
+        expiryTask = nil
+        guard state.hasAccess, inGracePeriod || !state.willAutoRenew, let expiresAt = state.expiresAt else { return }
+        expiryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(max(expiresAt.timeIntervalSinceNow, 0) + 1))
+            guard !Task.isCancelled, let self else { return }
+            // Cleared first so the refresh doesn't cancel the task it is running in.
+            self.expiryTask = nil
+            await self.refreshEntitlements()
+        }
     }
 
     func loadProducts() async {
@@ -104,17 +131,47 @@ final class SubscriptionService {
         await refreshEntitlements()
     }
 
+    /// Re-reads what the Apple ID is entitled to. Requests never overlap: StoreKit reports one
+    /// event (an approved Ask to Buy purchase, a renewal) through several channels at once, and
+    /// a read that started before the event must not finish last and overwrite the newer answer.
+    /// A request made while a read is running triggers one more read after it, and every caller
+    /// returns only once a read that began after its request has finished.
     func refreshEntitlements() async {
+        refreshRequested = true
+        if let running = refreshTask {
+            await running.value
+            return
+        }
+        let task = Task {
+            while refreshRequested {
+                refreshRequested = false
+                await readEntitlements()
+            }
+            refreshTask = nil
+        }
+        refreshTask = task
+        await task.value
+    }
+
+    private func readEntitlements() async {
         await finishUnfinishedTransactions()
-        var best: (transaction: Transaction, tier: SubscriptionTier)?
+        var best: (transaction: Transaction, tier: SubscriptionTier, accessEnds: Date?, inGracePeriod: Bool)?
         for await entitlement in Transaction.currentEntitlements {
             guard case .verified(let transaction) = entitlement,
                   transaction.productType == .autoRenewable,
-                  transaction.revocationDate == nil,
-                  (transaction.expirationDate ?? .distantFuture) > .now
+                  transaction.revocationDate == nil
             else { continue }
+            var accessEnds = transaction.expirationDate
+            var inGracePeriod = false
+            if let paidUntil = accessEnds, paidUntil <= .now {
+                // A failed renewal leaves the paid period over, but access continues while
+                // Apple retries the charge during the billing grace period.
+                guard let graceEnds = await gracePeriodEnd(for: transaction), graceEnds > .now else { continue }
+                accessEnds = graceEnds
+                inGracePeriod = true
+            }
             let tier: SubscriptionTier = transaction.productID == ProductID.annual ? .annual : .monthly
-            if best == nil || tier == .annual { best = (transaction, tier) }
+            if best == nil || tier == .annual { best = (transaction, tier, accessEnds, inGracePeriod) }
         }
 
         var next = SubscriptionState.free
@@ -122,7 +179,7 @@ final class SubscriptionService {
             next = SubscriptionState(
                 tier: best.tier,
                 isInTrial: Self.isIntroductoryOffer(best.transaction),
-                expiresAt: best.transaction.expirationDate,
+                expiresAt: best.accessEnds,
                 willAutoRenew: await willAutoRenew(productID: best.transaction.productID)
             )
         }
@@ -138,6 +195,7 @@ final class SubscriptionService {
             )
         }
         if nextEntitlement != entitlement { entitlement = nextEntitlement }
+        scheduleExpiryRefresh(for: next, inGracePeriod: best?.inGracePeriod ?? false)
         if next != status {
             status = next
             onStatusChange?(next)
@@ -150,6 +208,14 @@ final class SubscriptionService {
         for await result in Transaction.unfinished {
             if case .verified(let transaction) = result { await transaction.finish() }
         }
+    }
+
+    /// When the billing grace period of this subscription ends, or nil when it isn't in one.
+    private func gracePeriodEnd(for transaction: Transaction) async -> Date? {
+        guard let status = await transaction.subscriptionStatus, status.state == .inGracePeriod,
+              case .verified(let renewal) = status.renewalInfo
+        else { return nil }
+        return renewal.gracePeriodExpirationDate
     }
 
     private func willAutoRenew(productID: String) async -> Bool {

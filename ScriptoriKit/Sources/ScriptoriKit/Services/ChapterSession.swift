@@ -32,7 +32,8 @@ public enum FeedItem: Hashable, Identifiable, Sendable {
     }
 }
 
-/// Persisted reading position and completion for one day's chapter.
+/// Persisted reading position and completion for the current chapter. `day` is the day it
+/// was last opened; an unfinished chapter carries over to the next day it's opened.
 public struct ChapterProgress: Codable, Hashable, Sendable {
     public let chapterID: String
     public let day: DayKey
@@ -45,6 +46,9 @@ public struct ChapterProgress: Codable, Hashable, Sendable {
     public var markedVerses: [Int]
     /// Quick notes jotted on checkpoint cards, keyed by the checkpoint's last verse.
     public var notes: [Int: String]
+    /// When the reader last moved, marked a verse or wrote a note. Decides which copy wins
+    /// when two devices hold different progress; `nil` for progress saved before it existed.
+    public var updatedAt: Date?
 
     public init(
         chapterID: String,
@@ -54,7 +58,8 @@ public struct ChapterProgress: Codable, Hashable, Sendable {
         reachedReflection: Bool = false,
         completedAt: Date? = nil,
         markedVerses: [Int] = [],
-        notes: [Int: String] = [:]
+        notes: [Int: String] = [:],
+        updatedAt: Date? = nil
     ) {
         self.chapterID = chapterID
         self.day = day
@@ -64,6 +69,7 @@ public struct ChapterProgress: Codable, Hashable, Sendable {
         self.completedAt = completedAt
         self.markedVerses = markedVerses
         self.notes = notes
+        self.updatedAt = updatedAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -76,11 +82,48 @@ public struct ChapterProgress: Codable, Hashable, Sendable {
             reachedReflection: try container.decode(Bool.self, forKey: .reachedReflection),
             completedAt: try container.decodeIfPresent(Date.self, forKey: .completedAt),
             markedVerses: try container.decodeIfPresent([Int].self, forKey: .markedVerses) ?? [],
-            notes: try container.decodeIfPresent([Int: String].self, forKey: .notes) ?? [:]
+            notes: try container.decodeIfPresent([Int: String].self, forKey: .notes) ?? [:],
+            updatedAt: try container.decodeIfPresent(Date.self, forKey: .updatedAt)
         )
     }
 
     public var isCompleted: Bool { completedAt != nil }
+
+    /// The same position, marks and notes, dated `day`, so finishing counts for that day.
+    public func carried(to day: DayKey) -> ChapterProgress {
+        ChapterProgress(
+            chapterID: chapterID,
+            day: day,
+            anchorVerse: anchorVerse,
+            furthestVerse: furthestVerse,
+            reachedReflection: reachedReflection,
+            completedAt: completedAt,
+            markedVerses: markedVerses,
+            notes: notes,
+            updatedAt: updatedAt
+        )
+    }
+
+    /// Progress for a chapter known to be finished (the plan and journal say so) when its own
+    /// record isn't on this device: the reader lands on the last card, with their marks.
+    public static func completed(chapter: BibleChapter, day: DayKey, at date: Date, markedVerses: [Int] = []) -> ChapterProgress {
+        ChapterProgress(
+            chapterID: chapter.id,
+            day: day,
+            furthestVerse: chapter.verses.last?.number ?? 0,
+            reachedReflection: true,
+            completedAt: date,
+            markedVerses: markedVerses,
+            updatedAt: date
+        )
+    }
+
+    /// Whether this copy was changed more recently than `other` (another device's, say).
+    /// Differences under a millisecond don't count: a time loses that much precision on its
+    /// way through the cloud, and a copy must not look newer than itself after a round trip.
+    public func isNewer(than other: ChapterProgress) -> Bool {
+        (updatedAt ?? .distantPast).timeIntervalSince(other.updatedAt ?? .distantPast) > 0.001
+    }
 
     public func hasFinishedVerses(of chapter: BibleChapter) -> Bool {
         reachedReflection && furthestVerse >= (chapter.verses.last?.number ?? 0)
@@ -115,7 +158,15 @@ public final class ChapterSession {
 
     public init(chapter: BibleChapter, day: DayKey, versesPerCard: Int, restoring saved: ChapterProgress? = nil) {
         self.chapter = chapter
-        let progress = (saved?.chapterID == chapter.id && saved?.day == day) ? saved! : ChapterProgress(chapterID: chapter.id, day: day)
+        let progress: ChapterProgress
+        if let saved, saved.chapterID == chapter.id, saved.day == day {
+            progress = saved
+        } else if let saved, saved.chapterID == chapter.id, !saved.isCompleted {
+            // An unfinished chapter picked up on a later day keeps the reader's place and marks.
+            progress = saved.carried(to: day)
+        } else {
+            progress = ChapterProgress(chapterID: chapter.id, day: day)
+        }
         self.progress = progress
         self.versesPerCard = versesPerCard.clamped(to: ReadingPreferences.versesPerCardRange)
         let pages = VersePaginator.pages(for: chapter.verses, versesPerCard: versesPerCard)
@@ -163,7 +214,7 @@ public final class ChapterSession {
             progress.reachedReflection = true
             progress.furthestVerse = max(progress.furthestVerse, chapter.verses.last?.number ?? 0)
         }
-        onProgressChange?(progress)
+        progressChanged()
     }
 
     /// Re-groups cards (1–3 verses each) while keeping the reader on the same verse.
@@ -188,9 +239,20 @@ public final class ChapterSession {
         }
     }
 
+    /// Takes on reading done on another device in this chapter: moves to that card and shows
+    /// its marks and notes. Nothing is reported through `onProgressChange`; this isn't a
+    /// change the reader made here, so it must not be sent back as one.
+    public func adopt(_ remote: ChapterProgress) {
+        guard remote.chapterID == chapter.id else { return }
+        progress = remote.day == progress.day ? remote : remote.carried(to: progress.day)
+        focusedItemID = progress.reachedReflection && progress.anchorVerse == 0
+            ? FeedItem.reflection.id
+            : Self.itemID(forAnchor: progress.anchorVerse, in: pages)
+    }
+
     public func markCompleted(at date: Date = .now) {
         progress.completedAt = date
-        onProgressChange?(progress)
+        progressChanged(at: date)
     }
 
     // MARK: Marking & notes
@@ -207,7 +269,7 @@ public final class ChapterSession {
         } else {
             progress.markedVerses = Array(Set(progress.markedVerses + numbers)).sorted()
         }
-        onProgressChange?(progress)
+        progressChanged()
     }
 
     public var markedVerses: [BibleVerse] {
@@ -220,6 +282,11 @@ public final class ChapterSession {
 
     public func setNote(_ text: String, for checkpoint: Checkpoint) {
         progress.notes[checkpoint.throughVerse] = text
+        progressChanged()
+    }
+
+    private func progressChanged(at date: Date = .now) {
+        progress.updatedAt = date
         onProgressChange?(progress)
     }
 

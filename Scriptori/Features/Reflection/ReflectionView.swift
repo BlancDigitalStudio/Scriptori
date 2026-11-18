@@ -68,6 +68,11 @@ struct ReflectionView: View {
         .interactiveDismissDisabled(isSubmitting || result != nil)
         .presentationDetents([.large])
         .presentationCornerRadius(32)
+        // Saved as it changes, not only on close: the sheet can also go away with the app
+        // (quit, or re-run from Xcode) or with the screen behind it (the paywall taking over).
+        .onChange(of: entry) {
+            if mode == .new, result == nil { model.saveReflectionDraft(entry) }
+        }
         .onDisappear {
             if mode == .new, result == nil { model.saveReflectionDraft(entry) }
         }

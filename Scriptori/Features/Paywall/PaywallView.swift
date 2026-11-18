@@ -41,6 +41,15 @@ struct PaywallView: View {
 
             VStack {
                 HStack {
+                    if !isDismissible {
+                        // The gate after sign-in: the only way back to the sign-in screen.
+                        Button("Sign Out") { model.signOut() }
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .frame(height: 32)
+                            .background(.ultraThinMaterial, in: .capsule)
+                            .disabled(isPurchasing)
+                    }
                     Spacer()
                     if isDismissible {
                         Button { dismiss() } label: {
@@ -50,19 +59,12 @@ struct PaywallView: View {
                                 .background(.ultraThinMaterial, in: .circle)
                         }
                         .accessibilityLabel("Close")
-                    } else {
-                        // The gate after sign-in: the only way back to the sign-in screen.
-                        Button("Sign Out") { model.signOut() }
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 14)
-                            .frame(height: 32)
-                            .background(.ultraThinMaterial, in: .capsule)
-                            .disabled(isPurchasing)
                     }
                 }
                 Spacer()
             }
-            .padding()
+            .padding(.horizontal, 24)
+            .padding(.top, 16)
         }
         .overlay { if isPurchasing { purchasingOverlay } }
         .animation(.easeInOut(duration: 0.3), value: isPurchasing)
@@ -228,13 +230,26 @@ struct PaywallView: View {
             if let errorText {
                 Text(errorText).font(.footnote).foregroundStyle(.orange)
             }
+            if let endsAt = model.otherAccountPlanEndsAt {
+                // The Apple ID still has paid time from another Scriptori account. Buying now
+                // would only re-enable that plan for them, so this opens up when it runs out.
+                Text("A plan from another Scriptori account on your Apple ID ends \(endsAt.formatted(date: .abbreviated, time: .shortened)). You can subscribe using this account after that.")
+                    .font(.footnote.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.red.opacity(0.16), in: .rect(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.red.opacity(0.7), lineWidth: 1))
+            }
             Button {
                 Task { await purchase() }
             } label: {
                 Text(showsTrial ? "Start Free Trial" : "Continue")
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(selectedProduct == nil || isPurchasing)
+            .disabled(selectedProduct == nil || isPurchasing || model.otherAccountPlanEndsAt != nil)
 
             Text(finePrint)
                 .font(.footnote.weight(.bold))

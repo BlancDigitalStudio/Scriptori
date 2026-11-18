@@ -29,11 +29,8 @@ enum AuthError: LocalizedError {
     /// Apple or Google sign-in turned out to be a brand-new account while new accounts are
     /// closed. The account was removed again; nothing was kept.
     case newAccountBlocked
-    /// No account uses this email. Firebase only reports this with email enumeration
-    /// protection turned off; with it on, every rejected login is `invalidLogin`.
-    case accountNotFound
-    /// The email has an account but the password is wrong, or (with email enumeration
-    /// protection on) Firebase won't say which of the two failed.
+    /// Email enumeration protection is on, so a rejected login never says whether the email or
+    /// the password was the part that failed.
     case invalidLogin
     case emailInUse
     case invalidEmail
@@ -43,7 +40,6 @@ enum AuthError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .accountNotFound: "Account not found."
         case .invalidLogin: "Incorrect email or password."
         case .emailInUse: "An account with this email already exists. Try logging in instead."
         case .invalidEmail: "That email address doesn't look right."
@@ -313,11 +309,9 @@ final class AuthService {
 
     /// Turns Firebase's email/password failures into messages a reader can act on.
     ///
-    /// An unknown email reads "Account not found" and a wrong password "Incorrect email or
-    /// password", which needs email enumeration protection turned off in the Firebase console
-    /// (Authentication > Settings > User actions). With it on, both come back as
-    /// `invalidCredential` and looking the email up isn't trustworthy either, so both share the
-    /// second message instead of guessing which half failed.
+    /// Email enumeration protection stays on, so a bad email and a bad password both come back
+    /// as `invalidCredential`, and looking the email up isn't trustworthy either. Those logins
+    /// share one message instead of guessing which half failed.
     private static func friendlyEmailError(_ error: Error, creatingAccount: Bool) -> Error {
         let nsError = error as NSError
         guard nsError.domain == AuthErrorDomain, let code = AuthErrorCode(rawValue: nsError.code) else { return error }
@@ -327,8 +321,7 @@ final class AuthService {
         case .weakPassword: return AuthError.weakPassword
         case .tooManyRequests: return AuthError.tooManyAttempts
         case .networkError: return AuthError.offline
-        case .userNotFound: return AuthError.accountNotFound
-        case .wrongPassword: return AuthError.invalidLogin
+        case .userNotFound, .wrongPassword: return AuthError.invalidLogin
         case .invalidCredential where !creatingAccount: return AuthError.invalidLogin
         default: return error
         }
