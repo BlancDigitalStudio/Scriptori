@@ -2,6 +2,7 @@ import ScriptoriKit
 import SwiftUI
 
 /// Every chapter the reader has checked in on, grouped by book with progress through each.
+/// Opening one shows its verses to reread.
 struct ChaptersView: View {
     @Environment(AppModel.self) private var model
 
@@ -20,7 +21,7 @@ struct ChaptersView: View {
                         let chapters = history.chapters.filter { $0.bookID == bookID }.sorted { $0.number > $1.number }
                         Section {
                             ForEach(chapters) { chapter in
-                                NavigationLink(value: chapter.entryID) {
+                                NavigationLink(value: chapter.chapterID) {
                                     ChapterRow(chapter: chapter, entry: model.reflections.first { $0.id == chapter.entryID }, bookName: model.book(id: bookID)?.name ?? bookID)
                                 }
                             }
@@ -28,7 +29,7 @@ struct ChaptersView: View {
                             BookProgressHeader(book: model.book(id: bookID), bookID: bookID, read: chapters.count, isCurrent: model.profile?.plan.bookID == bookID)
                         }
                     }
-                    .navigationDestination(for: UUID.self) { JournalDetailView(entryID: $0) }
+                    .navigationDestination(for: String.self) { ChapterReaderView(chapterID: $0) }
                 }
             }
             .navigationTitle("Chapters")

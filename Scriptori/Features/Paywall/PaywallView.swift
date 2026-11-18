@@ -236,20 +236,21 @@ struct PaywallView: View {
                 Text("A plan from another Scriptori account on your Apple ID ends \(endsAt.formatted(date: .abbreviated, time: .shortened)). You can subscribe using this account after that.")
                     .font(.footnote.weight(.semibold))
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.black)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
                     .frame(maxWidth: .infinity)
-                    .background(Color.red.opacity(0.16), in: .rect(cornerRadius: 14))
-                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.red.opacity(0.7), lineWidth: 1))
+                    .background(Color(red: 1, green: 0.42, blue: 0.42), in: .rect(cornerRadius: 14))
+            } else {
+                // Not offered while the banner is up: there's nothing to buy until that plan ends.
+                Button {
+                    Task { await purchase() }
+                } label: {
+                    Text(showsTrial ? "Start Free Trial" : "Continue")
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(selectedProduct == nil || isPurchasing)
             }
-            Button {
-                Task { await purchase() }
-            } label: {
-                Text(showsTrial ? "Start Free Trial" : "Continue")
-            }
-            .buttonStyle(PrimaryButtonStyle())
-            .disabled(selectedProduct == nil || isPurchasing || model.otherAccountPlanEndsAt != nil)
 
             Text(finePrint)
                 .font(.footnote.weight(.bold))
