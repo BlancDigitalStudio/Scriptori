@@ -26,11 +26,18 @@ struct ChapterIntroCard: View {
             .font(.footnote)
             .foregroundStyle(palette.secondaryForeground)
             Spacer()
-            VStack(spacing: 6) {
+            VStack(spacing: 8) {
                 Image(systemName: "chevron.up")
-                    .symbolEffect(.pulse, options: .repeating.speed(0.5))
+                    .font(.system(size: 30, weight: .bold))
+                    .foregroundStyle(palette.foreground)
+                    .phaseAnimator([false, true]) { chevron, raised in
+                        chevron
+                            .opacity(raised ? 1 : 0.3)
+                            .scaleEffect(raised ? 1.15 : 0.9)
+                            .offset(y: raised ? -8 : 0)
+                    } animation: { _ in .easeInOut(duration: 0.8) }
                 Text("Swipe up to begin")
-                    .font(.footnote)
+                    .font(.subheadline.weight(.medium))
             }
             .foregroundStyle(palette.secondaryForeground)
             .padding(.bottom, 80)

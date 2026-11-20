@@ -110,8 +110,12 @@ struct JournalDetailView: View {
             List {
                 Section {
                     if let mood = entry.mood {
-                        LabeledContent("Mood") {
-                            Label(mood.label, systemImage: mood.symbol)
+                        // A plain row: a `Label` inside `LabeledContent` left a large empty gap here.
+                        HStack(spacing: 8) {
+                            Text("Mood")
+                            Spacer()
+                            Image(systemName: mood.symbol).foregroundStyle(.tint)
+                            Text(mood.label).foregroundStyle(.secondary)
                         }
                     }
                     if !entry.takeaways.isEmpty {
@@ -124,7 +128,13 @@ struct JournalDetailView: View {
                 ForEach(entry.answers.filter(\.isAnswered), id: \.questionID) { answer in
                     Section(answer.prompt) {
                         if let choice = answer.choice {
-                            Label(choice, systemImage: "checkmark.circle.fill")
+                            // The picked option, drawn like the selected chip in the reflection.
+                            Text(choice)
+                                .font(.subheadline.weight(.medium))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 9)
+                                .background(Color.brandTint, in: .capsule)
+                                .foregroundStyle(.white)
                         }
                         if !answer.text.isEmpty {
                             Text(answer.text)

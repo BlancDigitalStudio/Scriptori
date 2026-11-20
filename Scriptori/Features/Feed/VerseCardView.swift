@@ -10,9 +10,11 @@ struct VerseCardView: View {
     let palette: Palette
     var isMarked = false
     var isSpeaking = false
+    var ambientSound: AmbientSound = .off
     var onToggleMark: () -> Void = {}
     var onShare: () -> Void = {}
     var onListen: () -> Void = {}
+    var onSelectAmbient: (AmbientSound) -> Void = { _ in }
     var onToggleTypeface: () -> Void = {}
 
     private var fontSize: CGFloat {
@@ -47,7 +49,7 @@ struct VerseCardView: View {
             .contentShape(.rect)
             .onTapGesture(count: 2) { withAnimation(.spring(duration: 0.3)) { onToggleMark() } }
 
-            CardActionRail(foreground: palette.foreground, accent: palette.accent, typeface: typeface, isMarked: isMarked, isSpeaking: isSpeaking, onToggleMark: onToggleMark, onShare: onShare, onListen: onListen, onToggleTypeface: onToggleTypeface)
+            CardActionRail(foreground: palette.foreground, accent: palette.accent, typeface: typeface, isMarked: isMarked, isSpeaking: isSpeaking, ambientSound: ambientSound, onToggleMark: onToggleMark, onShare: onShare, onListen: onListen, onSelectAmbient: onSelectAmbient, onToggleTypeface: onToggleTypeface)
                 .padding(.trailing, 14)
                 .padding(.bottom, 150)
         }
@@ -95,9 +97,11 @@ private struct CardActionRail: View {
     let typeface: Typeface
     let isMarked: Bool
     let isSpeaking: Bool
+    let ambientSound: AmbientSound
     let onToggleMark: () -> Void
     let onShare: () -> Void
     let onListen: () -> Void
+    let onSelectAmbient: (AmbientSound) -> Void
     let onToggleTypeface: () -> Void
 
     var body: some View {
@@ -126,6 +130,20 @@ private struct CardActionRail: View {
                 }
             }
             .accessibilityLabel(isSpeaking ? "Stop reading aloud" : "Listen")
+            Menu {
+                Picker("Ambient sound", selection: Binding(get: { ambientSound }, set: onSelectAmbient)) {
+                    ForEach(AmbientSound.allCases) { Label($0.label, systemImage: $0.symbol).tag($0) }
+                }
+            } label: {
+                VStack(spacing: 4) {
+                    Image(systemName: ambientSound == .off ? "cloud" : ambientSound.symbol)
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(ambientSound == .off ? foreground : accent)
+                        .contentTransition(.symbolEffect(.replace))
+                    Text(ambientSound == .off ? "Ambient" : ambientSound.label).font(.caption2).lineLimit(1)
+                }
+            }
+            .accessibilityLabel("Ambient sound: \(ambientSound.label)")
             Button(action: onToggleTypeface) {
                 VStack(spacing: 4) {
                     Text("Aa")

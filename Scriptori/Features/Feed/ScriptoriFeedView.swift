@@ -78,15 +78,16 @@ struct ScriptoriFeedView: View {
         // Cards are sized to the screen; the checkpoint note keyboard must not resize them.
         .ignoresSafeArea(.keyboard)
         .onChange(of: session.focusedItemID) {
-            model.audio.stopSpeaking()
-            if session.focusedPage != nil { model.audio.beginReading() }
+            let page = session.focusedPage
+            model.audio.cardChanged(to: page?.verses, reference: page.map { today.chapter.reference(for: $0.verses) })
+            if page != nil { model.audio.beginReading() }
         }
         // Reopening the app restores the reader onto the card they left; no focus change fires
         // for that, so the saved soundscape would stay silent until they swiped.
         .onAppear {
             if session.focusedPage != nil { model.audio.beginReading() }
         }
-        .onDisappear { model.audio.stopSpeaking() }
+        .onDisappear { model.audio.stopListening() }
         .sheet(item: $sharePage) { page in
             ShareCardSheet(chapter: today.chapter, verses: page.verses, typeface: prefs.typeface, palette: palette)
         }
@@ -125,10 +126,13 @@ struct ScriptoriFeedView: View {
                 typeface: prefs.typeface,
                 palette: palette,
                 isMarked: today.session.isMarked(page),
-                isSpeaking: model.audio.isSpeaking(reference),
+                // Listen stays on from card to card, so every card shows Stop until it's tapped.
+                isSpeaking: model.audio.isListening,
+                ambientSound: prefs.ambientSound,
                 onToggleMark: { today.session.toggleMark(page) },
                 onShare: { sharePage = page },
                 onListen: { model.audio.toggleSpeaking(page.verses, reference: reference) },
+                onSelectAmbient: { sound in model.updatePreferences { $0.ambientSound = sound } },
                 onToggleTypeface: { model.updatePreferences { $0.typeface = $0.typeface == .serif ? .sans : .serif } }
             )
         case .reflection:
@@ -210,7 +214,7 @@ private struct FeedHeader: View {
 /// current height, never from a stored scroll offset, so it can't come to rest between cards
 /// after tab switches, sheets, the keyboard or a tap mid-swipe (all of which a paging
 /// `ScrollView` could do). Only the focused card and its neighbours are built.
-private struct CardPager<Card: View>: View {
+struct CardPager<Card: View>: View {
     let items: [FeedItem]
     let focusedID: String?
     let onFocus: (String) -> Void

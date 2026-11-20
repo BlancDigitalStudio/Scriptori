@@ -14,16 +14,25 @@ final class AmbientAudioService {
     private(set) var isReading = false
     /// Reference of the card being read aloud, e.g. "Genesis 1:1–3", while speech is playing.
     private(set) var speakingReference: String?
+    /// The reader turned Listen on and hasn't tapped Stop: each card they swipe to is read aloud.
+    private(set) var isListening = false
 
     @ObservationIgnored private let engine = AVAudioEngine()
     @ObservationIgnored private var noiseNode: AVAudioSourceNode?
     @ObservationIgnored private var fadeTask: Task<Void, Never>?
     @ObservationIgnored private let synthesizer = AVSpeechSynthesizer()
     @ObservationIgnored private let speechDelegate = SpeechDelegate()
+    @ObservationIgnored private var currentUtterance: AVSpeechUtterance?
 
     init() {
         synthesizer.delegate = speechDelegate
-        speechDelegate.onFinish = { [weak self] in self?.speakingReference = nil }
+        // Only the card being read now counts: the end of an earlier card is reported late,
+        // after the next one has started, and must not mark that one as finished.
+        speechDelegate.onFinish = { [weak self] finished in
+            guard let self, let current = self.currentUtterance, ObjectIdentifier(current) == finished else { return }
+            self.currentUtterance = nil
+            self.speakingReference = nil
+        }
     }
 
     /// Remembers the reader's choice; it plays right away only if they're already reading.
@@ -31,11 +40,7 @@ final class AmbientAudioService {
         guard newValue != sound else { return }
         stopSoundscape()
         sound = newValue
-        guard newValue != .off else {
-            stopSpeaking()
-            return
-        }
-        if isReading { play(newValue) }
+        if newValue != .off, isReading { play(newValue) }
     }
 
     /// Called when the reader swipes onto a verse card: starts the chosen soundscape.
@@ -61,7 +66,7 @@ final class AmbientAudioService {
     /// Stops everything and forgets the session (sign-out).
     func reset() {
         stopSoundscape()
-        stopSpeaking()
+        stopListening()
         sound = .off
         isReading = false
     }
@@ -76,13 +81,32 @@ final class AmbientAudioService {
         speakingReference == reference
     }
 
-    /// Reads a card aloud, or stops if that card is already being read.
+    /// Listen / Stop on a card. Listen keeps reading each new card aloud until Stop is tapped.
+    /// It goes by whether Listen is on, not by whether a voice is playing this instant: after
+    /// a card has been read to its end the button must still stop, not start over.
     func toggleSpeaking(_ verses: [BibleVerse], reference: String) {
-        if isSpeaking(reference) {
-            stopSpeaking()
+        if isListening {
+            stopListening()
         } else {
+            isListening = true
             speak(verses, reference: reference)
         }
+    }
+
+    /// The reader moved to another card: read it aloud if Listen is on, otherwise stay quiet.
+    /// `verses` is `nil` for cards without verses (themes, checkpoints, the reflection).
+    func cardChanged(to verses: [BibleVerse]?, reference: String?) {
+        if isListening, let verses, let reference {
+            speak(verses, reference: reference)
+        } else {
+            stopSpeaking()
+        }
+    }
+
+    /// Stop was tapped, or the reader left the feed: no more reading aloud until Listen again.
+    func stopListening() {
+        isListening = false
+        stopSpeaking()
     }
 
     func speak(_ verses: [BibleVerse], reference: String) {
@@ -94,10 +118,12 @@ final class AmbientAudioService {
         utterance.postUtteranceDelay = 0.3
         utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
         speakingReference = reference
+        currentUtterance = utterance
         synthesizer.speak(utterance)
     }
 
-    func stopSpeaking() {
+    private func stopSpeaking() {
+        currentUtterance = nil
         synthesizer.stopSpeaking(at: .immediate)
         speakingReference = nil
     }
@@ -207,9 +233,10 @@ final class AmbientAudioService {
 }
 
 private final class SpeechDelegate: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendable {
-    @MainActor var onFinish: (() -> Void)?
+    @MainActor var onFinish: ((ObjectIdentifier) -> Void)?
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        Task { @MainActor in self.onFinish?() }
+        let finished = ObjectIdentifier(utterance)
+        Task { @MainActor in self.onFinish?(finished) }
     }
 }

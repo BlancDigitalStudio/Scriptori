@@ -252,7 +252,9 @@ public final class ChapterSession {
 
     public func markCompleted(at date: Date = .now) {
         progress.completedAt = date
-        progressChanged(at: date)
+        // `updatedAt` decides which device's copy is newer, so it is always the real time,
+        // even when `date` isn't (a debug day offset).
+        progressChanged()
     }
 
     // MARK: Marking & notes
@@ -285,8 +287,8 @@ public final class ChapterSession {
         progressChanged()
     }
 
-    private func progressChanged(at date: Date = .now) {
-        progress.updatedAt = date
+    private func progressChanged() {
+        progress.updatedAt = .now
         onProgressChange?(progress)
     }
 

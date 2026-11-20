@@ -26,12 +26,20 @@ struct SignInView: View {
     @State private var errorText: String?
     /// The Apple ID's subscription belongs to an existing account, so sign-up is closed.
     @State private var isSignUpLocked = false
+    /// Cleared with the app's data, so only a first install (or a reinstall) sees the welcome.
+    @AppStorage("scriptori.hasSeenWelcome") private var hasSeenWelcome = false
 
     var body: some View {
         ZStack {
             PaletteBackground(palette: .meadow)
             Group {
-                if let mode { providers(for: mode) } else { landing }
+                if !hasSeenWelcome {
+                    welcome
+                } else if let mode {
+                    providers(for: mode)
+                } else {
+                    landing
+                }
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 24)
@@ -49,16 +57,39 @@ struct SignInView: View {
         }
         .foregroundStyle(.white)
         .animation(.snappy, value: mode)
+        .animation(.easeInOut(duration: 0.35), value: hasSeenWelcome)
         .animation(.easeInOut(duration: 0.3), value: isSignUpLocked)
         .sheet(isPresented: $showEmail) {
             EmailSignInSheet(isCreating: mode == .create)
         }
     }
 
+    private var welcome: some View {
+        VStack(spacing: 14) {
+            Spacer()
+            Image(systemName: "leaf.fill")
+                .font(.system(size: 48))
+                .symbolEffect(.pulse, options: .repeating)
+            Text("From doomscroll\nto bloomscroll")
+                .font(Typography.display(40))
+                .multilineTextAlignment(.center)
+            Text("One chapter a day from a book you choose.")
+                .multilineTextAlignment(.center)
+                .opacity(0.75)
+                .padding(.horizontal, 24)
+            Spacer()
+            Button("Get started") { hasSeenWelcome = true }
+                .buttonStyle(PrimaryButtonStyle())
+        }
+        .transition(.opacity)
+    }
+
     private var landing: some View {
         VStack(spacing: 14) {
             Spacer()
-            Image(systemName: "leaf.fill").font(.system(size: 48))
+            Image(systemName: "leaf.fill")
+                .font(.system(size: 48))
+                .symbolEffect(.pulse, options: .repeating)
             Text("Scriptori").font(Typography.display(42))
             Text("One chapter a day from a book you choose.")
                 .multilineTextAlignment(.center)

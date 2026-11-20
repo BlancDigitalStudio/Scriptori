@@ -223,10 +223,21 @@ struct ReflectionView: View {
                 }
             }
 
-            TextField(choices.isEmpty ? "Write a few words…" : "Add a thought (optional)", text: $entry.answers[index].text, axis: .vertical)
-                .lineLimit(3...8)
+            // A text editor rather than a text field, so Return starts a new line.
+            TextEditor(text: $entry.answers[index].text)
                 .focused($isEditing)
-                .padding(16)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 96, maxHeight: 220)
+                .overlay(alignment: .topLeading) {
+                    if entry.answers[index].text.isEmpty {
+                        Text(choices.isEmpty ? "Write a few words…" : "Add a thought (optional)")
+                            .foregroundStyle(palette.secondaryForeground)
+                            .padding(.top, 8)
+                            .padding(.leading, 5)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .padding(11)
                 .background(palette.foreground.opacity(0.1), in: .rect(cornerRadius: 18))
                 .tint(palette.accent)
 
@@ -314,10 +325,23 @@ struct ReflectionView: View {
         .padding(.bottom, 16)
     }
 
+    /// Each question must be answered before moving on: a chip question needs a chip picked,
+    /// a written question needs some text (whitespace alone doesn't count).
     private var canAdvance: Bool {
         if step == 0 { return entry.mood != nil }
-        if isLastStep { return entry.isSubmittable }
-        return true
+        let index = step - 1
+        guard entry.answers.indices.contains(index) else { return false }
+        let answer = entry.answers[index]
+        let answered: Bool
+        if let question = chapter.reflection.questions.first(where: { $0.id == answer.questionID }) {
+            answered = question.choices.isEmpty
+                ? !answer.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                : answer.choice != nil
+        } else {
+            // An older entry whose question is no longer in the guide: any answer will do.
+            answered = answer.isAnswered
+        }
+        return answered && (!isLastStep || entry.isSubmittable)
     }
 
     private func toggleTakeaway(_ tag: String) {
@@ -382,8 +406,6 @@ struct ReflectionView: View {
 
 /// The whole chapter in compact form, for refreshing your memory mid-reflection.
 private struct RereadSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
     let chapter: BibleChapter
     let highlights: [Int]
     let palette: Palette
@@ -410,26 +432,23 @@ private struct RereadSheet: View {
                     .swipeActions(edge: .trailing) {
                         Button("Quote") { onQuote(verse) }.tint(.indigo)
                     }
-                    .contextMenu {
-                        Button("Quote in my answer", systemImage: "text.quote") { onQuote(verse) }
-                    }
                     .id(verse.number)
                 }
                 .listStyle(.plain)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    Text("Swipe left on a verse to quote it")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(.bar)
+                }
                 .onAppear {
                     if let first = highlights.first { proxy.scrollTo(first, anchor: .top) }
                 }
             }
             .navigationTitle(chapter.reference)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-                ToolbarItem(placement: .bottomBar) {
-                    Text("Swipe or long-press a verse to quote it")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
         }
         .presentationDetents([.medium, .large])
     }

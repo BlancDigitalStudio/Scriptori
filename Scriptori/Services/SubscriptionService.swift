@@ -3,6 +3,7 @@ import Foundation
 import Observation
 import ScriptoriKit
 import StoreKit
+import UIKit
 
 /// StoreKit 2 entitlement manager. Both plans live in one subscription group and carry a
 /// 3-day free introductory offer (configured in App Store Connect / `Scriptori.storekit`).
@@ -97,21 +98,48 @@ final class SubscriptionService {
         }
     }
 
-    /// Returns `true` when the purchase completed and access is granted.
-    func purchase(_ product: Product, appAccountToken: UUID?) async throws -> Bool {
+    enum PurchaseError: LocalizedError {
+        /// The App Store returned a transaction that failed StoreKit's signature check. The reader
+        /// may still have been charged, so this must never be swallowed.
+        case unverified
+        case manageSubscriptionsUnavailable
+
+        var errorDescription: String? {
+            switch self {
+            case .unverified: "We couldn't confirm your purchase. If you were charged, contact support."
+            case .manageSubscriptionsUnavailable: "We couldn't open your subscriptions."
+            }
+        }
+    }
+
+    enum PurchaseOutcome {
+        /// Paid for, and access is on.
+        case unlocked
+        /// Paid for, but the entitlement isn't usable (yet).
+        case notUnlocked
+        /// Not finished: it waits on Ask to Buy approval or on the buyer fixing a payment
+        /// problem. If it goes through, it arrives later through `Transaction.updates`.
+        case pending
+        case cancelled
+    }
+
+    /// Throws `PurchaseError.unverified` when the App Store's transaction can't be verified.
+    func purchase(_ product: Product, appAccountToken: UUID?) async throws -> PurchaseOutcome {
         var options: Set<Product.PurchaseOption> = []
         if let appAccountToken { options.insert(.appAccountToken(appAccountToken)) }
 
         switch try await product.purchase(options: options) {
         case .success(let verification):
-            guard case .verified(let transaction) = verification else { return false }
+            guard case .verified(let transaction) = verification else { throw PurchaseError.unverified }
             await transaction.finish()
             await refreshEntitlements()
-            return status.hasAccess
-        case .pending, .userCancelled:
-            return false
+            return status.hasAccess ? .unlocked : .notUnlocked
+        case .pending:
+            return .pending
+        case .userCancelled:
+            return .cancelled
         @unknown default:
-            return false
+            return .notUnlocked
         }
     }
 
@@ -124,6 +152,16 @@ final class SubscriptionService {
         bytes[8] = (bytes[8] & 0x3F) | 0x80
         return UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
                            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]))
+    }
+
+    /// Apple's subscription management sheet. Used instead of SwiftUI's
+    /// `.manageSubscriptionsSheet`, which fails silently, so a failure can be shown.
+    func showManageSubscriptions() async throws {
+        let scene = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }
+        guard let scene else { throw PurchaseError.manageSubscriptionsUnavailable }
+        try await AppStore.showManageSubscriptions(in: scene)
     }
 
     func restorePurchases() async throws {

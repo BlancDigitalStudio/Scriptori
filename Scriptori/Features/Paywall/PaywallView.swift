@@ -12,6 +12,9 @@ struct PaywallView: View {
     @State private var plan: Plan = .annual
     @State private var isPurchasing = false
     @State private var errorText: String?
+    /// The reason the plans couldn't be loaded. Kept while a retry is running, so the bottom bar
+    /// doesn't flip back to a disabled purchase button between attempts.
+    @State private var loadFailureMessage: String?
 
     private let palette = Palette.dusk
     private let termsURL = URL(string: "https://scriptori.app/terms")!
@@ -20,6 +23,8 @@ struct PaywallView: View {
     private var subscriptions: SubscriptionService { model.subscriptions }
     private var selectedProduct: Product? { plan == .annual ? subscriptions.annual : subscriptions.monthly }
     private var showsTrial: Bool { subscriptions.isEligibleForTrial && (selectedProduct?.hasFreeTrial ?? true) }
+    /// No plan is available to buy because loading them failed; the only useful action is retrying.
+    private var showsLoadFailure: Bool { loadFailureMessage != nil && subscriptions.products.isEmpty }
 
     var body: some View {
         ZStack {
@@ -28,8 +33,10 @@ struct PaywallView: View {
                 VStack(spacing: 28) {
                     hero
                     benefits
-                    planToggle
-                    planDetail
+                    if !showsLoadFailure {
+                        planToggle
+                        planDetail
+                    }
                     if showsTrial { trialTimeline }
                 }
                 .padding(.horizontal, 24)
@@ -71,6 +78,13 @@ struct PaywallView: View {
         .foregroundStyle(.white)
         .task {
             if subscriptions.products.isEmpty { await subscriptions.loadProducts() }
+        }
+        .onChange(of: subscriptions.loadState, initial: true) { _, state in
+            switch state {
+            case .failed(let message): loadFailureMessage = message
+            case .loaded: loadFailureMessage = nil
+            case .idle, .loading: break
+            }
         }
         .onChange(of: subscriptions.status.hasAccess) { _, hasAccess in
             // While a purchase is finishing, `purchase()` dismisses once the leaf has had its moment.
@@ -167,39 +181,54 @@ struct PaywallView: View {
 
     @ViewBuilder
     private var planDetail: some View {
-        switch subscriptions.loadState {
-        case .failed(let message):
-            VStack(spacing: 10) {
-                Text(message).font(.footnote).multilineTextAlignment(.center)
-                Button("Try again") { Task { await subscriptions.loadProducts() } }
-                    .font(.footnote.weight(.semibold))
-            }
-            .padding()
-            .frame(maxWidth: .infinity)
-            .background(.white.opacity(0.08), in: .rect(cornerRadius: 20))
-        default:
-            if let product = selectedProduct {
-                VStack(spacing: 6) {
-                    Text("\(product.displayPrice) / \(product.periodLabel)")
-                        .font(.title2.bold())
-                    if let monthly = product.monthlyEquivalent {
-                        Text("Just \(monthly), billed annually")
-                            .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.7))
-                    } else {
-                        Text("Billed monthly, cancel anytime")
-                            .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.7))
-                    }
+        // A failed load is shown in the bottom bar instead (see `loadFailureBar`).
+        if let product = selectedProduct {
+            VStack(spacing: 6) {
+                Text("\(product.displayPrice) / \(product.periodLabel)")
+                    .font(.title2.bold())
+                if let monthly = product.monthlyEquivalent {
+                    Text("Just \(monthly), billed annually")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.7))
+                } else {
+                    Text("Billed monthly, cancel anytime")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.7))
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 20)
-                .background(.white.opacity(0.08), in: .rect(cornerRadius: 20))
-                .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(palette.accent.opacity(0.6)))
-                .contentTransition(.numericText())
-            } else {
-                ProgressView().tint(.white).frame(height: 96)
             }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 20)
+            .background(.white.opacity(0.08), in: .rect(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(palette.accent.opacity(0.6)))
+            .contentTransition(.numericText())
+        } else {
+            ProgressView().tint(.white).frame(height: 96)
+        }
+    }
+
+    /// Bottom-bar replacement for the purchase button when the plans couldn't be loaded.
+    private func loadFailureBar(_ message: String) -> some View {
+        let isRetrying = subscriptions.loadState == .loading
+        return VStack(spacing: 10) {
+            Text("We couldn't load the subscription options.")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.red)
+                .multilineTextAlignment(.center)
+            Text(message)
+                .font(.footnote.weight(.bold))
+                .foregroundStyle(.red)
+                .multilineTextAlignment(.center)
+            Button {
+                Task { await subscriptions.loadProducts() }
+            } label: {
+                if isRetrying {
+                    ProgressView().tint(.black)
+                } else {
+                    Text("Try Again")
+                }
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(isRetrying)
         }
     }
 
@@ -228,12 +257,17 @@ struct PaywallView: View {
     private var purchaseBar: some View {
         VStack(spacing: 10) {
             if let errorText {
-                Text(errorText).font(.footnote).foregroundStyle(.orange)
+                // Same treatment as the load-failure message in `loadFailureBar`.
+                Text(errorText)
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if let endsAt = model.otherAccountPlanEndsAt {
                 // The Apple ID still has paid time from another Scriptori account. Buying now
                 // would only re-enable that plan for them, so this opens up when it runs out.
-                Text("A plan from another Scriptori account on your Apple ID ends \(endsAt.formatted(date: .abbreviated, time: .shortened)). You can subscribe using this account after that.")
+                Text("A plan from another Scriptori account on your Apple ID ends \(Self.shownEnd(of: endsAt).formatted(date: .abbreviated, time: .shortened)). You can subscribe using this account after that.")
                     .font(.footnote.weight(.semibold))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.black)
@@ -241,6 +275,10 @@ struct PaywallView: View {
                     .padding(.vertical, 12)
                     .frame(maxWidth: .infinity)
                     .background(Color(red: 1, green: 0.42, blue: 0.42), in: .rect(cornerRadius: 14))
+            } else if showsLoadFailure, let message = loadFailureMessage {
+                // No plans loaded, so there's nothing to buy: offer a full-size retry instead of
+                // a purchase button that can't be tapped.
+                loadFailureBar(message)
             } else {
                 // Not offered while the banner is up: there's nothing to buy until that plan ends.
                 Button {
@@ -283,6 +321,13 @@ struct PaywallView: View {
             : "\(price). Auto-renews until cancelled in Settings."
     }
 
+    /// The banner shows no seconds, so a plan ending at 5:11:46 would read "5:11", a time that
+    /// passes while the plan is still running. Rounded up to the minute it is always true.
+    private static func shownEnd(of date: Date) -> Date {
+        let seconds = date.timeIntervalSinceReferenceDate
+        return Date(timeIntervalSinceReferenceDate: (seconds / 60).rounded(.up) * 60)
+    }
+
     // MARK: Actions
 
     private func purchase() async {
@@ -297,10 +342,15 @@ struct PaywallView: View {
         }
         do {
             let token = model.profile.map { SubscriptionService.appAccountToken(for: $0.id) }
-            if try await subscriptions.purchase(product, appAccountToken: token) {
+            switch try await subscriptions.purchase(product, appAccountToken: token) {
+            case .unlocked:
                 Haptics.chapterComplete()
                 try? await Task.sleep(for: .seconds(1.6))
                 if isDismissible { dismiss() }
+            case .pending:
+                errorText = "Your purchase isn't finished yet. Scriptori will unlock as soon as it goes through."
+            case .notUnlocked, .cancelled:
+                break
             }
         } catch {
             errorText = error.localizedDescription

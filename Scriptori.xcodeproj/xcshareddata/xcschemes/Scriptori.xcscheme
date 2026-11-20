@@ -65,6 +65,10 @@
             argument = "-demo-paywall"
             isEnabled = "NO">
          </CommandLineArgument>
+         <CommandLineArgument
+            argument = "-day-offset 1"
+            isEnabled = "YES">
+         </CommandLineArgument>
       </CommandLineArguments>
       <StoreKitConfigurationFileReference
          identifier = "../../Config/Scriptori.storekit">

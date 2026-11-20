@@ -24,6 +24,8 @@ protocol ProfileSyncing: Sendable {
     func push(profile: UserProfile) async throws
     func push(reflection: ReflectionEntry, userID: String) async throws
     func fetchReflections(userID: String) async throws -> [ReflectionEntry]
+    /// The account's journal, each time another device adds to or edits it. Ends when cancelled.
+    func reflectionUpdates(userID: String) -> AsyncStream<[ReflectionEntry]>
     func fetchReading(userID: String) async throws -> CloudReading
     /// What the account holds, each time another device changes it. Ends when cancelled.
     func readingUpdates(userID: String) -> AsyncStream<CloudReading>
@@ -38,6 +40,7 @@ struct LocalOnlySync: ProfileSyncing {
     func push(profile: UserProfile) async throws {}
     func push(reflection: ReflectionEntry, userID: String) async throws {}
     func fetchReflections(userID: String) async throws -> [ReflectionEntry] { [] }
+    func reflectionUpdates(userID: String) -> AsyncStream<[ReflectionEntry]> { AsyncStream { $0.finish() } }
     func fetchReading(userID: String) async throws -> CloudReading { CloudReading() }
     func readingUpdates(userID: String) -> AsyncStream<CloudReading> { AsyncStream { $0.finish() } }
     func push(progress: ChapterProgress, userID: String) async throws {}
@@ -69,6 +72,21 @@ struct FirestoreSync: ProfileSyncing {
         let snapshot = try await db.collection("users").document(userID).collection("reflections")
             .order(by: "createdAt", descending: true).limit(to: 500).getDocuments()
         return try snapshot.documents.map { try $0.data(as: ReflectionEntry.self) }
+    }
+
+    /// Listens to the journal. As with `readingUpdates`, this device's own writes are skipped
+    /// until the server has them. An entry that can't be read is left out, not fatal.
+    func reflectionUpdates(userID: String) -> AsyncStream<[ReflectionEntry]> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            let registration = db.collection("users").document(userID).collection("reflections")
+                .order(by: "createdAt", descending: true).limit(to: 500)
+                .addSnapshotListener { snapshot, _ in
+                    guard let snapshot, !snapshot.metadata.hasPendingWrites else { return }
+                    continuation.yield(snapshot.documents.compactMap { try? $0.data(as: ReflectionEntry.self) })
+                }
+            let listener = Listener(registration: registration)
+            continuation.onTermination = { _ in listener.registration.remove() }
+        }
     }
 
     /// Both are kept as fields on the profile document, not documents of their own: they are

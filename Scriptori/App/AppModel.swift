@@ -32,6 +32,8 @@ final class AppModel {
     @ObservationIgnored private var draftPush: Task<Void, Never>?
     /// Listens for reading done on the account's other devices while this one is open.
     @ObservationIgnored private var cloudReadingUpdates: (userID: String, task: Task<Void, Never>)?
+    /// The same for journal entries added or edited on the account's other devices.
+    @ObservationIgnored private var cloudJournalUpdates: Task<Void, Never>?
     /// `updatedAt` of the last cloud position acted on when returning to the app, so one
     /// that can't be used here isn't reconsidered on every return.
     @ObservationIgnored private var handledCloudProgressAt: Date?
@@ -192,12 +194,12 @@ final class AppModel {
 
     var streakStatus: StreakStatus {
         guard let profile else { return .notStarted }
-        return streakEngine.status(of: profile.streak, now: .now)
+        return streakEngine.status(of: profile.streak, now: AppClock.now)
     }
 
     var displayedStreak: Int {
         guard let profile else { return 0 }
-        return streakEngine.displayedStreak(profile.streak, now: .now)
+        return streakEngine.displayedStreak(profile.streak, now: AppClock.now)
     }
 
     // MARK: Lifecycle
@@ -231,10 +233,11 @@ final class AppModel {
         audio.resumeIfNeeded()
         await subscriptions.refreshEntitlements()
         guard let profile else { return }
-        if let today, today.session.progress.day != DayKey(.now) {
+        if let today, today.session.progress.day != DayKey(AppClock.now) {
             await loadToday()
         }
         await pullReading()
+        await pullJournal()
         await notifications.refresh(for: profile, engine: streakEngine)
     }
 
@@ -267,7 +270,7 @@ final class AppModel {
     /// reader left off, or chapter 1.
     func chooseBook(_ bookID: String) async {
         guard var profile, let book = content?.book(id: bookID) else { return }
-        let finishedToday = profile.plan.lastCompletedDay == DayKey(.now) && profile.plan.bookID != bookID
+        let finishedToday = profile.plan.lastCompletedDay == DayKey(AppClock.now) && profile.plan.bookID != bookID
             ? profile.plan.lastCompletedChapterID.flatMap(ChapterID.parse)
             : nil
         profile.plan.start(bookID: bookID, chapterCount: book.chapterCount)
@@ -534,11 +537,35 @@ final class AppModel {
             }
         }
         cloudReadingUpdates = (userID, task)
+        let journal = sync.reflectionUpdates(userID: userID)
+        cloudJournalUpdates = Task { [weak self] in
+            for await entries in journal {
+                await self?.applyCloudJournal(entries, userID: userID)
+            }
+        }
     }
 
     private func stopFollowingCloudReading() {
         cloudReadingUpdates?.task.cancel()
         cloudReadingUpdates = nil
+        cloudJournalUpdates?.cancel()
+        cloudJournalUpdates = nil
+    }
+
+    /// On returning to the app: picks up journal entries added or edited on another device.
+    private func pullJournal() async {
+        guard let profile, let entries = try? await sync.fetchReflections(userID: profile.id) else { return }
+        await applyCloudJournal(entries, userID: profile.id)
+    }
+
+    /// Takes the account's copy of each journal entry when it was edited more recently than
+    /// the one here. Entries only on this device (not sent yet) are kept.
+    private func applyCloudJournal(_ entries: [ReflectionEntry], userID: String) async {
+        guard let profile, profile.id == userID else { return }
+        let merged = ReflectionEntry.merge(reflections, entries)
+        guard merged != reflections else { return }
+        reflections = merged
+        try? await store.save(merged, for: .reflections, namespace: userID)
     }
 
     /// On returning to the app: picks up reading and check-in answers from another device.
@@ -576,7 +603,7 @@ final class AppModel {
 
     private func loadToday(cloud: Cloud) async {
         guard let profile, let content else { return }
-        let day = DayKey(.now)
+        let day = DayKey(AppClock.now)
         let assignment: DailyAssignment
         switch DailyReadingResolver.reading(progress: profile.plan, books: content.books, today: day) {
         case .needsBook:
@@ -595,6 +622,16 @@ final class AppModel {
             let chapter = try await content.chapter(id: assignment.chapterID)
             let local = await store.load(ChapterProgress.self, for: .chapterProgress, namespace: profile.id)
             var saved = await settleProgress(local: local, cloud: cloud, chapterID: chapter.id, userID: profile.id)
+            // Marked finished today, yet the plan never counted it: a check-in that went wrong.
+            // Left alone it blocks the check-in and stops its draft from being saved, so the
+            // mark is dropped (here and for the other devices) and the place and marks kept.
+            if !assignment.isCompletedToday, var stuck = saved, stuck.chapterID == chapter.id, stuck.day == day, stuck.isCompleted {
+                stuck.completedAt = nil
+                stuck.updatedAt = .now
+                saved = stuck
+                try? await store.save(stuck, for: .chapterProgress, namespace: profile.id)
+                try? await sync.push(progress: stuck, userID: profile.id)
+            }
             // Finished today according to the plan, but the reading record for it isn't here
             // (it was finished on another device): rebuild it from the journal entry, so Today
             // opens on the finished last card with the verses that were marked.
@@ -629,7 +666,9 @@ final class AppModel {
     /// Validates and records the end-of-chapter reflection, returning what to celebrate.
     @discardableResult
     func submitReflection(_ entry: ReflectionEntry) async throws(CompletionError) -> CompletionResult? {
-        guard let profile, let today else { return nil }
+        // The chapter on Today can change under an open check-in (another device moved on);
+        // an entry for one chapter must never complete a different one.
+        guard let profile, let today, entry.chapterID == today.chapter.id else { return nil }
         // A check-in resumed from a draft carries the draft's save time; a new entry has no edits.
         var entry = entry
         entry.updatedAt = nil
@@ -637,11 +676,14 @@ final class AppModel {
             chapter: today.chapter,
             progress: today.session.progress,
             reflection: entry,
-            profile: profile
+            profile: profile,
+            now: AppClock.now
         )
         self.profile = result.profile
+        // The day counted comes from `AppClock`; which copy of the profile is newer never does.
+        self.profile?.updatedAt = .now
         reflections.insert(result.entry, at: 0)
-        today.session.markCompleted(at: result.progress.completedAt ?? .now)
+        today.session.markCompleted(at: result.progress.completedAt ?? AppClock.now)
         var assignment = today.assignment.markingCompleted()
         if let content, case .chapter(let resolved) = DailyReadingResolver.reading(progress: result.profile.plan, books: content.books, today: result.progress.day) {
             assignment = resolved

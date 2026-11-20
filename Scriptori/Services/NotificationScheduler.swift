@@ -7,7 +7,10 @@ import UserNotifications
 @MainActor
 final class NotificationScheduler {
     private enum ID {
+        /// The old repeating reminder; removed so it can't fire alongside the per-day ones.
         static let daily = "scriptori.daily"
+        /// One reminder per day, e.g. `scriptori.daily.2026-11-20`, so a finished day can be skipped.
+        static let dailyPrefix = "scriptori.daily."
         static let streakRescue = "scriptori.streak.rescue"
         static let streakRepair = "scriptori.streak.repair"
         static let trialEnding = "scriptori.trial.ending"
@@ -20,25 +23,18 @@ final class NotificationScheduler {
         (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
     }
 
+    /// How many days of daily reminders are queued ahead. Re-planned every time the app opens or a
+    /// chapter is completed, so this only matters for someone who stops opening the app.
+    private static let dailyDaysAhead = 14
+
     /// Re-plans all streak-related reminders from the current profile state.
-    func refresh(for profile: UserProfile, engine: StreakEngine, now: Date = .now) async {
-        center.removePendingNotificationRequests(withIdentifiers: [ID.daily, ID.streakRescue, ID.streakRepair])
+    func refresh(for profile: UserProfile, engine: StreakEngine, now: Date = AppClock.now) async {
+        let pendingDaily = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(ID.dailyPrefix) }
+        center.removePendingNotificationRequests(withIdentifiers: pendingDaily + [ID.daily, ID.streakRescue, ID.streakRepair])
         let prefs = profile.preferences
         guard prefs.remindersEnabled else { return }
 
-        let daily = UNMutableNotificationContent()
-        daily.title = "Morning Scriptori 🌿"
-        if let cue = profile.onboarding?.cue {
-            daily.body = "\(cue): trade a few minutes of scrolling for today's chapter."
-        } else {
-            daily.body = "Trade a few minutes of scrolling for today's chapter."
-        }
-        daily.sound = .default
-        let dailyTrigger = UNCalendarNotificationTrigger(
-            dateMatching: DateComponents(hour: prefs.reminderHour, minute: prefs.reminderMinute),
-            repeats: true
-        )
-        try? await center.add(UNNotificationRequest(identifier: ID.daily, content: daily, trigger: dailyTrigger))
+        await scheduleDailyReminders(for: profile, now: now)
 
         switch engine.status(of: profile.streak, now: now) {
         case .active(let deadline):
@@ -57,6 +53,21 @@ final class NotificationScheduler {
             )
         case .notStarted, .completedToday, .broken:
             break
+        }
+    }
+
+    /// A reminder at the chosen time on each upcoming day, except today once today's chapter
+    /// has been checked in on.
+    private func scheduleDailyReminders(for profile: UserProfile, now: Date) async {
+        let prefs = profile.preferences
+        let body = profile.onboarding?.cue.map { "\($0): trade a few minutes of scrolling for today's chapter." }
+            ?? "Trade a few minutes of scrolling for today's chapter."
+        let today = DayKey(now)
+        let doneToday = profile.streak.lastCompletedDay == today || profile.plan.lastCompletedDay == today
+        for offset in (doneToday ? 1 : 0)..<Self.dailyDaysAhead {
+            let day = today.adding(days: offset)
+            guard let fireDate = Calendar.current.date(bySettingHour: prefs.reminderHour, minute: prefs.reminderMinute, second: 0, of: day.startDate()) else { continue }
+            await schedule(id: ID.dailyPrefix + day.description, title: "Morning Scriptori 🌿", body: body, at: fireDate)
         }
     }
 

@@ -64,14 +64,19 @@ struct StreakEngineTests {
         #expect(update.state.longest == 5)
     }
 
-    @Test func repairIsRateLimitedByCooldown() {
+    @Test func repairIsOfferedAgainAfterARecentRepair() {
         let state = StreakState(
             current: 10, longest: 10,
             lastCompletedDay: DayKey(date(5), calendar: utc),
             lastRepairDay: DayKey(date(2), calendar: utc)
         )
-        #expect(engine.status(of: state, now: date(7)) == .broken)
-        #expect(engine.displayedStreak(state, now: date(7)) == 0)
+        guard case .repairable = engine.status(of: state, now: date(7)) else {
+            Issue.record("expected repairable")
+            return
+        }
+        let update = engine.recordCompletion(state, at: date(7))
+        #expect(update.event == .repaired)
+        #expect(update.state.current == 11)
     }
 
     @Test func twoMissedDaysBreaksStreak() {

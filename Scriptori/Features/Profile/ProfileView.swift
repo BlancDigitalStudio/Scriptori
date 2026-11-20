@@ -1,31 +1,34 @@
 import ScriptoriKit
-import StoreKit
 import SwiftUI
 
 struct ProfileView: View {
     @Environment(AppModel.self) private var model
-    @State private var showManageSubscription = false
-    @State private var showPaywall = false
+    @State private var manageSubscriptionFailed = false
     @State private var confirmDelete = false
     @State private var reauthProvider: AuthProvider?
     @State private var deleteError: String?
-    @State private var showStreakInfo = false
+    @State private var streakInfo: StreakInfoSheet.Kind?
 
     var body: some View {
         NavigationStack {
             if let profile = model.profile {
                 List {
                     Section { stats(profile) }
-                    Section("Last 7 days") { WeekStrip(days: profile.streak.recentDays) }
+                    Section("This week") { WeekStrip(days: profile.streak.recentDays) }
                     bookSection(profile.plan)
-                    readingSection(profile.preferences)
                     reminderSection(profile.preferences)
-                    subscriptionSection(profile.subscription)
-                    accountSection(profile)
+                    signOutRow
                 }
                 .navigationTitle(profile.displayName ?? "Profile")
-                .manageSubscriptionsSheet(isPresented: $showManageSubscription)
-                .sheet(isPresented: $showPaywall) { PaywallView(isDismissible: true) }
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        NavigationLink { SettingsView() } label: {
+                            Image(systemName: "gearshape")
+                        }
+                        .accessibilityLabel("Settings")
+                    }
+                }
+                .manageSubscriptionsFailureAlert(isPresented: $manageSubscriptionFailed)
                 .sheet(isPresented: Binding(get: { reauthProvider != nil }, set: { if !$0 { reauthProvider = nil } })) {
                     if let reauthProvider {
                         ConfirmIdentitySheet(provider: reauthProvider) { Task { await deleteAccount() } }
@@ -36,12 +39,14 @@ struct ProfileView: View {
                 } message: {
                     Text(deleteError ?? "")
                 }
-                .sheet(isPresented: $showStreakInfo) {
-                    StreakInfoSheet(current: model.displayedStreak, longest: profile.streak.longest, days: profile.streak.recentDays)
+                .sheet(item: $streakInfo) { kind in
+                    StreakInfoSheet(kind: kind, current: model.displayedStreak, longest: profile.streak.longest, days: profile.streak.recentDays)
                 }
                 .confirmationDialog("Delete your account and all reflections?", isPresented: $confirmDelete, titleVisibility: .visible) {
                     if profile.subscription.hasAccess && profile.subscription.willAutoRenew {
-                        Button("Manage subscription") { showManageSubscription = true }
+                        Button("Manage subscription") {
+                            Task { await model.openManageSubscriptions(onFailure: { manageSubscriptionFailed = true }) }
+                        }
                     }
                     Button("Delete account", role: .destructive) { Task { await deleteAccount() } }
                 } message: {
@@ -53,9 +58,9 @@ struct ProfileView: View {
 
     private func stats(_ profile: UserProfile) -> some View {
         HStack {
-            stat("\(model.displayedStreak)", "Current streak", "flame.fill", .orange) { showStreakInfo = true }
+            stat("\(model.displayedStreak)", "Current streak", "flame.fill", .orange) { streakInfo = .current }
             Divider()
-            stat("\(profile.streak.longest)", "Longest", "trophy.fill", .yellow) { showStreakInfo = true }
+            stat("\(profile.streak.longest)", "Longest", "trophy.fill", .yellow) { streakInfo = .longest }
             Divider()
             stat("\(model.history.chapters.count)", "Chapters", "book.fill", .green) { model.selectedTab = .chapters }
             Divider()
@@ -105,24 +110,6 @@ struct ProfileView: View {
         }
     }
 
-    private func readingSection(_ prefs: ReadingPreferences) -> some View {
-        Section {
-            Picker("Typeface", selection: binding(\.typeface)) {
-                ForEach(Typeface.allCases, id: \.self) { Text($0.label).tag($0) }
-            }
-            Stepper("Verses per card: \(prefs.versesPerCard)", value: binding(\.versesPerCard), in: ReadingPreferences.versesPerCardRange)
-            Picker("Ambient mode", selection: binding(\.ambientSound)) {
-                ForEach(AmbientSound.allCases) {
-                    Label($0.label, systemImage: $0.symbol).tag($0)
-                }
-            }
-        } header: {
-            Text("Reading")
-        } footer: {
-            Text("Ambient sound starts once you swipe into today's chapter, and your choice is remembered next time.")
-        }
-    }
-
     private func reminderSection(_ prefs: ReadingPreferences) -> some View {
         Section {
             Toggle("Daily reminder", isOn: binding(\.remindersEnabled))
@@ -132,31 +119,25 @@ struct ProfileView: View {
         } header: {
             Text("Reminders")
         } footer: {
-            Text("Missed a day? Complete the next day's chapter within 24 hours to repair your streak (once a week).")
+            Text("Missed a day? Complete the next day's chapter within 24 hours to repair your streak.")
         }
     }
 
-    private func subscriptionSection(_ status: SubscriptionState) -> some View {
-        Section("Subscription") {
-            LabeledContent("Plan", value: planLabel(status))
-            if let expires = status.expiresAt {
-                LabeledContent(status.willAutoRenew ? "Renews" : "Expires", value: expires.formatted(date: .abbreviated, time: .omitted))
+    /// Sign out and delete share one row; the account details live in Settings.
+    private var signOutRow: some View {
+        Section {
+            HStack(spacing: 12) {
+                Button { model.signOut() } label: {
+                    Text("Sign out").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                Button(role: .destructive) { confirmDelete = true } label: {
+                    Text("Delete account").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
             }
-            if status.hasAccess {
-                Button("Manage subscription") { showManageSubscription = true }
-            } else {
-                Button("Start free trial") { showPaywall = true }
-            }
-            Button("Restore purchases") { Task { try? await model.subscriptions.restorePurchases() } }
-        }
-    }
-
-    private func accountSection(_ profile: UserProfile) -> some View {
-        Section("Account") {
-            if let email = profile.email { LabeledContent("Email", value: email) }
-            LabeledContent("Signed in with", value: profile.authProvider.rawValue.capitalized)
-            Button("Sign out") { model.signOut() }
-            Button("Delete account", role: .destructive) { confirmDelete = true }
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets())
         }
     }
 
@@ -180,14 +161,6 @@ struct ProfileView: View {
         return status.isInTrial
             ? "\(base) Deleting your account doesn't cancel your free trial: you'll be charged when it ends unless you cancel it with Apple first."
             : "\(base) Deleting your account doesn't cancel your subscription: it keeps renewing until you cancel it with Apple."
-    }
-
-    private func planLabel(_ status: SubscriptionState) -> String {
-        switch status.tier {
-        case .free: "Free"
-        case .monthly: status.isInTrial ? "Monthly · Free trial" : "Monthly"
-        case .annual: status.isInTrial ? "Annual · Free trial" : "Annual"
-        }
     }
 
     private func binding<Value>(_ keyPath: WritableKeyPath<ReadingPreferences, Value>) -> Binding<Value> {
@@ -246,8 +219,15 @@ private struct StartedBookRow: View {
     }
 }
 
+/// Explains whichever streak number was tapped on the Profile tab, and only that one.
 private struct StreakInfoSheet: View {
+    enum Kind: String, Identifiable {
+        case current, longest
+        var id: String { rawValue }
+    }
+
     @Environment(\.dismiss) private var dismiss
+    let kind: Kind
     let current: Int
     let longest: Int
     let days: [DayKey]
@@ -255,20 +235,26 @@ private struct StreakInfoSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    explainer("flame.fill", .orange, "Current streak", "\(current) day\(current == 1 ? "" : "s")",
-                              "Days in a row, up to today, with at least one chapter checked in. Miss a day and it starts over, unless you use Streak Repair within 24 hours (once a week).")
-                    explainer("trophy.fill", .yellow, "Longest streak", "\(longest) day\(longest == 1 ? "" : "s")",
-                              "Your best run ever. It never goes down, so it's the number to beat.")
-                }
-                Section("Last 7 days") { WeekStrip(days: days) }
-                Section {
-                    Text("Checking in on more than one chapter in a day counts toward Chapters, but adds one day to your streak.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                switch kind {
+                case .current:
+                    Section {
+                        explainer("flame.fill", .orange, "Current streak", "\(current) day\(current == 1 ? "" : "s")",
+                                  "Days in a row, up to today, with at least one chapter checked in. Miss a day and it starts over, unless you finish the next day's chapter within 24 hours.")
+                    }
+                    Section("This week") { WeekStrip(days: days) }
+                    Section {
+                        Text("Checking in on more than one chapter in a day counts toward Chapters, but adds one day to your streak.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                case .longest:
+                    Section {
+                        explainer("trophy.fill", .yellow, "Longest streak", "\(longest) day\(longest == 1 ? "" : "s")",
+                                  "Your best run ever. It never goes down, so it's the number to beat.")
+                    }
                 }
             }
-            .navigationTitle("Streaks")
+            .navigationTitle(kind == .current ? "Current streak" : "Longest streak")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
@@ -294,16 +280,23 @@ private struct StreakInfoSheet: View {
 private struct WeekStrip: View {
     let days: [DayKey]
 
+    /// Fixed Sunday-to-Saturday columns. "Th" and "Sat" stay distinct from Tuesday and Sunday.
+    private static let labels = ["S", "M", "T", "W", "Th", "F", "Sat"]
+
     var body: some View {
-        let today = DayKey(.now)
+        let today = DayKey(AppClock.now)
+        // Gregorian weekday is 1 for Sunday, whichever day the locale treats as the start of the week.
+        let sunday = today.adding(days: 1 - Calendar.current.component(.weekday, from: today.startDate()))
         HStack {
-            ForEach((0..<7).reversed(), id: \.self) { offset in
-                let day = today.adding(days: -offset)
+            ForEach(0..<7, id: \.self) { offset in
+                let day = sunday.adding(days: offset)
                 let done = days.contains(day)
                 VStack(spacing: 6) {
-                    Text(day.startDate().formatted(.dateTime.weekday(.narrow)))
+                    Text(Self.labels[offset])
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .foregroundStyle(day == today ? .primary : .secondary)
                     Image(systemName: done ? "flame.fill" : "circle")
                         .foregroundStyle(done ? Color.orange : Color.secondary.opacity(0.4))
                         .font(.title3)

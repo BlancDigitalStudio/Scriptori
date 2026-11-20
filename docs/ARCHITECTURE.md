@@ -109,8 +109,8 @@ choice is saved as the user's default; values saved under the old 1–5 range ar
 **Streaks + Streak Repair.** `StreakEngine` is keyed on local `DayKey`s:
 - Completing on consecutive days extends the streak; completing twice in a day is a no-op.
 - If exactly one day was missed, the streak is *repairable* until `graceHours` (default 24) after the
-  missed day ended, i.e. through the end of the following day. Repairs are limited to one per
-  `repairCooldownDays` (default 7) so the buffer remains a safety net.
+  missed day ended, i.e. through the end of the following day. There is no limit on how often this
+  can be used.
 - Milestones at 3, 7, 14, 30, 50, 100, 200, 365 days trigger confetti and a triple haptic.
 
 **Subscriptions.** StoreKit 2: one group, `com.scriptori.premium.monthly` and
@@ -187,6 +187,9 @@ Completion validation can move to a Cloud Function later if streak tampering bec
    file, choose it under *Edit Scheme → Run → Options → StoreKit Configuration*.)
 3. Debug shortcuts: launch arguments `-demo` (go straight to the feed as a guest) and `-demo-paywall`.
    The paywall and sign-in screens also show debug-only skip/guest buttons.
+   `-day-offset N` moves the app's calendar day N days ahead (negative goes back) to test the next
+   chapter, streaks and Streak Repair without changing the Mac's clock; it's listed, unticked, under
+   *Edit Scheme → Run → Arguments*. Subscriptions and sync timestamps stay on the real clock.
 4. Run logic tests with `cd ScriptoriKit && swift test`, or the ScriptoriKit scheme in Xcode.
 
 ### Enabling Firebase (Google + email sign-in, cloud sync)

@@ -20,14 +20,11 @@ public struct StreakState: Codable, Hashable, Sendable {
 public struct StreakPolicy: Sendable {
     /// How long after a missed day ends the streak can still be repaired by completing a chapter.
     public var graceHours: Int
-    /// Minimum days between two repairs, so the buffer stays a safety net rather than a loophole.
-    public var repairCooldownDays: Int
     public var milestones: Set<Int>
     public var historyLimit: Int
 
-    public init(graceHours: Int = 24, repairCooldownDays: Int = 7, milestones: Set<Int> = [3, 7, 14, 30, 50, 100, 200, 365], historyLimit: Int = 60) {
+    public init(graceHours: Int = 24, milestones: Set<Int> = [3, 7, 14, 30, 50, 100, 200, 365], historyLimit: Int = 60) {
         self.graceHours = graceHours
-        self.repairCooldownDays = repairCooldownDays
         self.milestones = milestones
         self.historyLimit = historyLimit
     }
@@ -76,7 +73,7 @@ public struct StreakEngine: Sendable {
             return .active(deadline: today.endDate(in: calendar))
         case 2:
             let deadline = repairDeadline(missedDay: last.adding(days: 1, calendar: calendar))
-            return canRepair(state, today: today) && now < deadline ? .repairable(deadline: deadline) : .broken
+            return now < deadline ? .repairable(deadline: deadline) : .broken
         default:
             return .broken
         }
@@ -121,10 +118,5 @@ public struct StreakEngine: Sendable {
     private func repairDeadline(missedDay: DayKey) -> Date {
         let end = missedDay.endDate(in: calendar)
         return calendar.date(byAdding: .hour, value: policy.graceHours, to: end) ?? end
-    }
-
-    private func canRepair(_ state: StreakState, today: DayKey) -> Bool {
-        guard let lastRepair = state.lastRepairDay else { return true }
-        return lastRepair.days(until: today, calendar: calendar) >= policy.repairCooldownDays
     }
 }

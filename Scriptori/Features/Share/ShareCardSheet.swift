@@ -69,20 +69,18 @@ struct ShareCardSheet: View {
                     .clipShape(.rect(cornerRadius: 20))
                     .shadow(radius: 20)
 
-                ScrollView(.horizontal) {
-                    HStack(spacing: 12) {
-                        ForEach(Palette.all) { option in
-                            Circle()
-                                .fill(option.gradient)
-                                .frame(width: 40, height: 40)
-                                .overlay(Circle().strokeBorder(.primary, lineWidth: option == palette ? 3 : 0))
-                                .onTapGesture { palette = option }
-                                .accessibilityLabel(option.id.capitalized)
-                        }
+                HStack(spacing: 12) {
+                    ForEach(Palette.all) { option in
+                        Circle()
+                            .fill(option.gradient)
+                            .frame(width: 40, height: 40)
+                            .overlay(Circle().strokeBorder(.primary, lineWidth: option == palette ? 3 : 0))
+                            .onTapGesture { palette = option }
+                            .accessibilityLabel(option.id.capitalized)
                     }
-                    .padding(.horizontal)
                 }
-                .scrollIndicators(.hidden)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal)
 
                 if let rendered {
                     ShareLink(
