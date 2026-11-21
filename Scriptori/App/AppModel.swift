@@ -186,9 +186,11 @@ final class AppModel {
         guard status != profile.subscription else { return }
         let startedTrial = status.isInTrial && !profile.subscription.isInTrial
         profile.subscription = status
-        profile.updatedAt = .now
+        // Not a change to the profile itself: it is what the store says on this device, so it
+        // neither counts as the newest copy nor sends the rest of the profile anywhere.
         self.profile = profile
-        await persistProfile()
+        try? await store.save(profile, for: .profile, namespace: profile.id)
+        try? await sync.push(subscription: status, userID: profile.id)
         if startedTrial { await notifications.scheduleTrialEndingReminder(expiresAt: status.expiresAt) }
     }
 
@@ -273,6 +275,10 @@ final class AppModel {
         let finishedToday = profile.plan.lastCompletedDay == DayKey(AppClock.now) && profile.plan.bookID != bookID
             ? profile.plan.lastCompletedChapterID.flatMap(ChapterID.parse)
             : nil
+        // Leaving a chapter the reader was midway through still counts that book as started.
+        if let left = today?.session.progress, left.furthestVerse > 0, let leftBook = ChapterID.parse(left.chapterID)?.bookID {
+            profile.plan.markStarted(leftBook)
+        }
         profile.plan.start(bookID: bookID, chapterCount: book.chapterCount)
         profile.updatedAt = .now
         self.profile = profile
@@ -306,6 +312,30 @@ final class AppModel {
         let saved = entry
         writeDraft { try? await store.save(saved, for: .reflectionDraft, namespace: userID) }
         queueDraftPush(entry, userID: userID)
+    }
+
+    // MARK: Check-in sheet left open
+
+    private static func openCheckInKey(_ userID: String) -> String { "scriptori.openCheckIn.\(userID)" }
+
+    /// Records that the check-in sheet for `chapterID` is on screen, so a relaunch can reopen it.
+    /// Closing the sheet (or leaving the screen it sits on) clears this; quitting doesn't.
+    func checkInSheetChanged(isOpen: Bool, chapterID: String) {
+        guard let profile else { return }
+        let key = Self.openCheckInKey(profile.id)
+        if isOpen {
+            UserDefaults.standard.set(chapterID, forKey: key)
+        } else if UserDefaults.standard.string(forKey: key) == chapterID {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+    }
+
+    /// The unfinished check-in to reopen: the reader had its sheet open when the app was quit.
+    func checkInToResume() -> ReflectionEntry? {
+        guard let profile, let today, !today.session.progress.isCompleted,
+              UserDefaults.standard.string(forKey: Self.openCheckInKey(profile.id)) == today.chapter.id,
+              let draft = reflectionDraft, draft.chapterID == today.chapter.id, draft.mood != nil else { return nil }
+        return draft
     }
 
     private func clearReflectionDraft(userID: String) async {
@@ -383,7 +413,7 @@ final class AppModel {
         // Answers saved before sign-in: the `-demo` launch arguments, or onboarding finished on a
         // build where it came first.
         let pendingAnswers = Self.consumePending(OnboardingAnswers.self, key: PendingKey.answers)
-        var resolved = [local, remote].compactMap { $0 }.max { $0.updatedAt < $1.updatedAt }
+        var resolved = UserProfile.resolving(local, remote)
             ?? UserProfile(
                 id: session.userID,
                 displayName: session.displayName,
@@ -477,6 +507,16 @@ final class AppModel {
             try? await sync.push(draft: local, userID: userID)
         }
         return local
+    }
+
+    /// A book counts as started once the reader gets past a chapter's intro, even if they never
+    /// finish the chapter, so Profile lists it. Only the first time is news.
+    private func noteBookStarted(by progress: ChapterProgress) {
+        guard progress.furthestVerse > 0, var profile, let bookID = ChapterID.parse(progress.chapterID)?.bookID,
+              profile.plan.markStarted(bookID) else { return }
+        profile.updatedAt = .now
+        self.profile = profile
+        Task { await persistProfile() }
     }
 
     /// Sends the position a couple of seconds after the reader stops swiping, not per card.
@@ -601,6 +641,79 @@ final class AppModel {
         await loadToday(cloud: .unavailable)
     }
 
+    /// There is one "current chapter" record, and the next book's reading replaces it. So
+    /// before that happens, an unfinished chapter other than `currentChapterID` is set aside
+    /// here, to be picked up when the reader comes back to its book, on any device.
+    private func pausedChapters(keeping local: ChapterProgress?, cloud: Cloud, currentChapterID: String, userID: String) async -> [String: ChapterProgress] {
+        let stored = await store.load([String: ChapterProgress].self, for: .pausedChapters, namespace: userID) ?? [:]
+        var paused = stored
+        var inCloud: [String: ChapterProgress]?
+        if case .fetched(let reading) = cloud {
+            inCloud = reading.paused
+            for (id, remote) in reading.paused where paused[id].map({ remote.isNewer(than: $0) }) ?? true {
+                paused[id] = remote
+            }
+        }
+        if let local, local.chapterID != currentChapterID, !local.isCompleted, local.hasStarted,
+           paused[local.chapterID].map({ local.isNewer(than: $0) }) ?? true {
+            paused[local.chapterID] = local
+        }
+        // A chapter checked in on since it was set aside is done with.
+        paused = paused.filter { id, progress in
+            !reflections.contains { $0.chapterID == id && $0.createdAt > (progress.updatedAt ?? .distantPast) }
+        }
+        if paused != stored {
+            try? await store.save(paused, for: .pausedChapters, namespace: userID)
+        }
+        // Compared by which copy is newer, not for equality: times lose precision in storage.
+        if let inCloud, Set(inCloud.keys) != Set(paused.keys) || paused.contains(where: { $0.value.isNewer(than: inCloud[$0.key]!) }) {
+            try? await sync.push(paused: paused, userID: userID)
+        }
+        return paused
+    }
+
+    private func forgetPausedChapter(_ chapterID: String, userID: String) async {
+        var paused = await store.load([String: ChapterProgress].self, for: .pausedChapters, namespace: userID) ?? [:]
+        if paused.removeValue(forKey: chapterID) != nil {
+            try? await store.save(paused, for: .pausedChapters, namespace: userID)
+            try? await sync.push(paused: paused, userID: userID)
+        }
+        var drafts = await store.load([String: ReflectionEntry].self, for: .pausedDrafts, namespace: userID) ?? [:]
+        if drafts.removeValue(forKey: chapterID) != nil {
+            try? await store.save(drafts, for: .pausedDrafts, namespace: userID)
+            try? await sync.push(pausedDrafts: drafts, userID: userID)
+        }
+    }
+
+    /// The same for an unfinished check-in: there is one "current draft", which a check-in
+    /// started in another book replaces, so a draft for any other chapter is set aside first.
+    private func pausedDrafts(keeping local: ReflectionEntry?, cloud: Cloud, currentChapterID: String, userID: String) async -> [String: ReflectionEntry] {
+        let stored = await store.load([String: ReflectionEntry].self, for: .pausedDrafts, namespace: userID) ?? [:]
+        var paused = stored
+        var inCloud: [String: ReflectionEntry]?
+        if case .fetched(let reading) = cloud {
+            inCloud = reading.pausedDrafts
+            for (id, remote) in reading.pausedDrafts where paused[id].map({ remote.isNewer(than: $0) }) ?? true {
+                paused[id] = remote
+            }
+        }
+        if let local, local.chapterID != currentChapterID,
+           paused[local.chapterID].map({ local.isNewer(than: $0) }) ?? true {
+            paused[local.chapterID] = local
+        }
+        // A draft that was completed is in the journal under the same ID.
+        let journal = Set(reflections.map(\.id))
+        paused = paused.filter { !journal.contains($0.value.id) }
+        if paused != stored {
+            try? await store.save(paused, for: .pausedDrafts, namespace: userID)
+        }
+        // Compared by which copy is newer, not for equality: times lose precision in storage.
+        if let inCloud, Set(inCloud.keys) != Set(paused.keys) || paused.contains(where: { $0.value.isNewer(than: inCloud[$0.key]!) }) {
+            try? await sync.push(pausedDrafts: paused, userID: userID)
+        }
+        return paused
+    }
+
     private func loadToday(cloud: Cloud) async {
         guard let profile, let content else { return }
         let day = DayKey(AppClock.now)
@@ -621,16 +734,28 @@ final class AppModel {
         do {
             let chapter = try await content.chapter(id: assignment.chapterID)
             let local = await store.load(ChapterProgress.self, for: .chapterProgress, namespace: profile.id)
+            let paused = await pausedChapters(keeping: local, cloud: cloud, currentChapterID: chapter.id, userID: profile.id)
             var saved = await settleProgress(local: local, cloud: cloud, chapterID: chapter.id, userID: profile.id)
+            // Back in a book that was switched away from: carry on where it was left.
+            if saved?.chapterID != chapter.id, let resumed = paused[chapter.id] { saved = resumed }
             // Marked finished today, yet the plan never counted it: a check-in that went wrong.
             // Left alone it blocks the check-in and stops its draft from being saved, so the
             // mark is dropped (here and for the other devices) and the place and marks kept.
-            if !assignment.isCompletedToday, var stuck = saved, stuck.chapterID == chapter.id, stuck.day == day, stuck.isCompleted {
-                stuck.completedAt = nil
-                stuck.updatedAt = .now
-                saved = stuck
-                try? await store.save(stuck, for: .chapterProgress, namespace: profile.id)
-                try? await sync.push(progress: stuck, userID: profile.id)
+            if !assignment.isCompletedToday, var finished = saved, finished.chapterID == chapter.id, finished.isCompleted {
+                if reflections.contains(where: { $0.chapterID == chapter.id && $0.day == finished.day }) {
+                    // Read before and checked in on: this is the book being read again, so the
+                    // earlier round's record is history and the chapter starts from its intro.
+                    let fresh = ChapterProgress(chapterID: chapter.id, day: day, updatedAt: .now)
+                    saved = fresh
+                    try? await store.save(fresh, for: .chapterProgress, namespace: profile.id)
+                    try? await sync.push(progress: fresh, userID: profile.id)
+                } else if finished.day == day {
+                    finished.completedAt = nil
+                    finished.updatedAt = .now
+                    saved = finished
+                    try? await store.save(finished, for: .chapterProgress, namespace: profile.id)
+                    try? await sync.push(progress: finished, userID: profile.id)
+                }
             }
             // Finished today according to the plan, but the reading record for it isn't here
             // (it was finished on another device): rebuild it from the journal entry, so Today
@@ -646,14 +771,18 @@ final class AppModel {
             session.onProgressChange = { [weak self] progress in
                 Task { try? await store.save(progress, for: .chapterProgress, namespace: userID) }
                 self?.queueProgressPush(progress, userID: userID)
+                self?.noteBookStarted(by: progress)
             }
             today = TodayContext(assignment: assignment, chapter: chapter, session: session)
+            let localDraft = await store.load(ReflectionEntry.self, for: .reflectionDraft, namespace: profile.id)
+            let pausedDrafts = await pausedDrafts(keeping: localDraft, cloud: cloud, currentChapterID: chapter.id, userID: profile.id)
             // Like the reading position, an unfinished check-in carries over to a later day.
             if session.progress.isCompleted {
                 reflectionDraft = nil
             } else {
-                let localDraft = await store.load(ReflectionEntry.self, for: .reflectionDraft, namespace: profile.id)
-                let draft = await settleDraft(local: localDraft, cloud: cloud, chapterID: chapter.id, userID: profile.id)
+                var draft = await settleDraft(local: localDraft, cloud: cloud, chapterID: chapter.id, userID: profile.id)
+                // Back in a book that was switched away from: its check-in is where it was left.
+                if draft?.chapterID != chapter.id { draft = pausedDrafts[chapter.id] }
                 reflectionDraft = draft.flatMap { $0.chapterID == chapter.id ? $0.carried(to: day) : nil }
             }
         } catch {
@@ -694,6 +823,7 @@ final class AppModel {
 
         await persistProfile()
         await clearReflectionDraft(userID: result.profile.id)
+        await forgetPausedChapter(today.chapter.id, userID: result.profile.id)
         try? await store.save(reflections, for: .reflections, namespace: result.profile.id)
         await notifications.refresh(for: result.profile, engine: streakEngine)
         Task { await pushReflection(result.entry, userID: result.profile.id) }

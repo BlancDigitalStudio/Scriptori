@@ -123,6 +123,9 @@ public struct PlanProgress: Codable, Hashable, Sendable {
     /// When the reader last picked a book. A check-in after this makes that check-in's book
     /// the current one (see `reconcile(with:books:)`).
     public var bookChosenAt: Date?
+    /// Books the reader got into (past the intro of a chapter) without checking in on any chapter
+    /// yet, oldest first. They still count as started: Profile lists them with the rest.
+    public var startedBookIDs: [String]
 
     public init(
         planID: String = PlanProgress.bookPlanID,
@@ -131,8 +134,10 @@ public struct PlanProgress: Codable, Hashable, Sendable {
         lastCompletedDay: DayKey? = nil,
         lastCompletedChapterID: String? = nil,
         savedPositions: [String: Int] = [:],
-        bookChosenAt: Date? = nil
+        bookChosenAt: Date? = nil,
+        startedBookIDs: [String] = []
     ) {
+        self.startedBookIDs = startedBookIDs
         self.planID = planID
         self.bookID = bookID
         self.position = position
@@ -151,8 +156,17 @@ public struct PlanProgress: Codable, Hashable, Sendable {
             lastCompletedDay: try container.decodeIfPresent(DayKey.self, forKey: .lastCompletedDay),
             lastCompletedChapterID: try container.decodeIfPresent(String.self, forKey: .lastCompletedChapterID),
             savedPositions: try container.decodeIfPresent([String: Int].self, forKey: .savedPositions) ?? [:],
-            bookChosenAt: try container.decodeIfPresent(Date.self, forKey: .bookChosenAt)
+            bookChosenAt: try container.decodeIfPresent(Date.self, forKey: .bookChosenAt),
+            startedBookIDs: try container.decodeIfPresent([String].self, forKey: .startedBookIDs) ?? []
         )
+    }
+
+    /// Notes that the reader got into `bookID`. Returns whether that was news.
+    @discardableResult
+    public mutating func markStarted(_ bookID: String) -> Bool {
+        guard !startedBookIDs.contains(bookID) else { return false }
+        startedBookIDs.append(bookID)
+        return true
     }
 
     /// Chapters already read in `bookID`, if the reader started it before and didn't finish.
@@ -164,8 +178,16 @@ public struct PlanProgress: Codable, Hashable, Sendable {
 
     /// Switches to `bookID` and makes its next chapter available today: from where the
     /// reader left off, or chapter 1 if it's new or was finished. The streak is unaffected.
+    /// Choosing the book already being read changes nothing, unless it's finished: then it
+    /// is read again from chapter 1.
     public mutating func start(bookID: String, chapterCount: Int, at date: Date = .now) {
-        guard bookID != self.bookID else { return }
+        guard bookID != self.bookID else {
+            guard chapterCount > 0, position >= chapterCount else { return }
+            bookChosenAt = date
+            position = 0
+            lastCompletedChapterID = nil
+            return
+        }
         bookChosenAt = date
         if let current = self.bookID { savedPositions[current] = position }
         let saved = savedPositions.removeValue(forKey: bookID) ?? 0
@@ -219,6 +241,31 @@ public struct UserProfile: Codable, Hashable, Identifiable, Sendable {
         self.plan = plan
         self.onboarding = onboarding
         self.updatedAt = updatedAt
+    }
+}
+
+extension UserProfile {
+    /// Chooses between this device's copy of the profile and the account's. The copy changed
+    /// last wins, except that reading is never lost to it: a device that hasn't caught up yet
+    /// can hold the later change (a setting, say) while the other holds a finished chapter.
+    /// In that case the streak, totals and last finished chapter come from the copy with
+    /// more chapters read, and the result counts as a new change so it reaches both.
+    public static func resolving(_ local: UserProfile?, _ remote: UserProfile?, now: Date = .now) -> UserProfile? {
+        guard let local, let remote else { return local ?? remote }
+        let localIsNewest = local.updatedAt >= remote.updatedAt
+        var newest = localIsNewest ? local : remote
+        let other = localIsNewest ? remote : local
+        guard other.totalChaptersRead > newest.totalChaptersRead else { return newest }
+
+        newest.streak = other.streak
+        newest.totalChaptersRead = other.totalChaptersRead
+        newest.reflectionCount = max(newest.reflectionCount, other.reflectionCount)
+        if let finished = other.plan.lastCompletedDay, newest.plan.lastCompletedDay.map({ finished > $0 }) ?? true {
+            newest.plan.lastCompletedDay = finished
+            newest.plan.lastCompletedChapterID = other.plan.lastCompletedChapterID
+        }
+        newest.updatedAt = now
+        return newest
     }
 }
 

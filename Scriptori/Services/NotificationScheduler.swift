@@ -38,14 +38,14 @@ final class NotificationScheduler {
 
         switch engine.status(of: profile.streak, now: now) {
         case .active(let deadline):
-            await schedule(
+            await scheduleOneOff(
                 id: ID.streakRescue,
                 title: "Keep your \(profile.streak.current)-day streak 🔥",
                 body: "Your chapter is waiting — it only takes a few swipes.",
                 at: min(deadline.addingTimeInterval(-3 * 3600), Self.today(atHour: 20, from: now))
             )
         case .repairable(let deadline):
-            await schedule(
+            await scheduleOneOff(
                 id: ID.streakRepair,
                 title: "Streak Repair is open ⏳",
                 body: "Finish today's chapter to save your \(profile.streak.current)-day streak.",
@@ -74,7 +74,7 @@ final class NotificationScheduler {
     func scheduleTrialEndingReminder(expiresAt: Date?) async {
         center.removePendingNotificationRequests(withIdentifiers: [ID.trialEnding])
         guard let expiresAt else { return }
-        await schedule(
+        await scheduleOneOff(
             id: ID.trialEnding,
             title: "Your free trial ends tomorrow",
             body: "No surprises: manage or cancel anytime in Settings.",
@@ -82,14 +82,44 @@ final class NotificationScheduler {
         )
     }
 
+    #if DEBUG
+    static let debugDelayArgument = "-notification-delay"
+
+    /// Seconds from the `-notification-delay N` launch argument, or nil when it's absent.
+    /// With it, the one-off reminders (trial ending, streak rescue, streak repair) arrive N seconds
+    /// after they are planned, whatever time they were planned for, so they can be tested without
+    /// waiting or moving the clock. The daily reminders are left alone. Put the app in the
+    /// background straight away: nothing is shown while it's in the foreground.
+    static let debugDelay: TimeInterval? = {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: debugDelayArgument), arguments.indices.contains(index + 1),
+              let seconds = TimeInterval(arguments[index + 1]), seconds > 0 else { return nil }
+        return seconds
+    }()
+    #endif
+
+    /// For reminders that happen once: the trial ending, the streak rescue and the streak repair.
+    private func scheduleOneOff(id: String, title: String, body: String, at date: Date) async {
+        #if DEBUG
+        if let delay = Self.debugDelay {
+            await add(id: id, title: title, body: body, trigger: UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false))
+            return
+        }
+        #endif
+        await schedule(id: id, title: title, body: body, at: date)
+    }
+
     private func schedule(id: String, title: String, body: String, at date: Date) async {
         guard date > .now else { return }
+        let parts = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+        await add(id: id, title: title, body: body, trigger: UNCalendarNotificationTrigger(dateMatching: parts, repeats: false))
+    }
+
+    private func add(id: String, title: String, body: String, trigger: UNNotificationTrigger) async {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         content.sound = .default
-        let parts = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: date)
-        let trigger = UNCalendarNotificationTrigger(dateMatching: parts, repeats: false)
         try? await center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
     }
 

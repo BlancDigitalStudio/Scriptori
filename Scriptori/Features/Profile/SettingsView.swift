@@ -30,7 +30,7 @@ struct SettingsView: View {
         Section("Subscription") {
             LabeledContent("Plan", value: planLabel(status))
             if let expires = status.expiresAt {
-                LabeledContent(status.willAutoRenew ? "Renews" : "Expires", value: expires.formatted(date: .abbreviated, time: .omitted))
+                LabeledContent(expiryLabel(status), value: expires.formatted(date: .abbreviated, time: .omitted))
             }
             if status.hasAccess {
                 Button("Manage subscription") {
@@ -62,9 +62,15 @@ struct SettingsView: View {
     private func planLabel(_ status: SubscriptionState) -> String {
         switch status.tier {
         case .free: "Free"
-        case .monthly: status.isInTrial ? "Monthly · Free trial" : "Monthly"
-        case .annual: status.isInTrial ? "Annual · Free trial" : "Annual"
+        case .monthly: status.isInTrial ? "Free Trial - Monthly" : "Monthly"
+        case .annual: status.isInTrial ? "Free Trial - Annual" : "Annual"
         }
+    }
+
+    /// A trial ends rather than renews: the paid plan starts then, or access stops if it's cancelled.
+    private func expiryLabel(_ status: SubscriptionState) -> String {
+        if status.isInTrial { return "Trial ends" }
+        return status.willAutoRenew ? "Renews" : "Expires"
     }
 }
 

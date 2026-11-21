@@ -42,16 +42,6 @@ struct ProfileView: View {
                 .sheet(item: $streakInfo) { kind in
                     StreakInfoSheet(kind: kind, current: model.displayedStreak, longest: profile.streak.longest, days: profile.streak.recentDays)
                 }
-                .confirmationDialog("Delete your account and all reflections?", isPresented: $confirmDelete, titleVisibility: .visible) {
-                    if profile.subscription.hasAccess && profile.subscription.willAutoRenew {
-                        Button("Manage subscription") {
-                            Task { await model.openManageSubscriptions(onFailure: { manageSubscriptionFailed = true }) }
-                        }
-                    }
-                    Button("Delete account", role: .destructive) { Task { await deleteAccount() } }
-                } message: {
-                    Text(deleteWarning(profile.subscription))
-                }
             }
         }
     }
@@ -83,10 +73,12 @@ struct ProfileView: View {
         .accessibilityLabel("\(label): \(value)")
     }
 
-    /// The current book first, then every other book with a check-in (most recent first).
+    /// The current book first, then every other book with a check-in (most recent first), then
+    /// books that were begun but have no check-in yet.
     private func bookSection(_ plan: PlanProgress) -> some View {
         let history = model.history
-        let started = ([plan.bookID].compactMap { $0 } + history.startedBookIDs).reduce(into: [String]()) {
+        let begun = Array(plan.startedBookIDs.reversed())
+        let started = ([plan.bookID].compactMap { $0 } + history.startedBookIDs + begun).reduce(into: [String]()) {
             if !$0.contains($1) { $0.append($1) }
         }
         return Section(started.count > 1 ? "Your books" : "Your book") {
@@ -96,7 +88,12 @@ struct ProfileView: View {
                     Button {
                         if !isCurrent { Task { await model.chooseBook(bookID) } } else { model.selectedTab = .today }
                     } label: {
-                        StartedBookRow(book: book, read: history.chaptersRead(in: bookID), isCurrent: isCurrent)
+                        StartedBookRow(
+                            book: book,
+                            progress: history.progress(in: bookID, chapterCount: book.chapterCount, plan: plan),
+                            isCurrent: isCurrent,
+                            isBegun: plan.startedBookIDs.contains(bookID)
+                        )
                     }
                     .buttonStyle(.plain)
                     .accessibilityHint(isCurrent ? "Open today's chapter" : "Switch to \(book.name)")
@@ -135,6 +132,17 @@ struct ProfileView: View {
                     Text("Delete account").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
+                // Attached to the button, not the whole list, so the dialog opens beside it.
+                .confirmationDialog("Delete your account and all reflections?", isPresented: $confirmDelete, titleVisibility: .visible) {
+                    if let subscription = model.profile?.subscription, subscription.hasAccess, subscription.willAutoRenew {
+                        Button("Manage subscription") {
+                            Task { await model.openManageSubscriptions(onFailure: { manageSubscriptionFailed = true }) }
+                        }
+                    }
+                    Button("Delete account", role: .destructive) { Task { await deleteAccount() } }
+                } message: {
+                    Text(deleteWarning(model.profile?.subscription ?? .free))
+                }
             }
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets())
@@ -186,8 +194,23 @@ struct ProfileView: View {
 
 private struct StartedBookRow: View {
     let book: BibleBook
-    let read: Int
+    /// Progress in the round being read: after a book is finished and started again, it counts
+    /// up from zero again.
+    let progress: ReadingHistory.BookProgress
     let isCurrent: Bool
+    /// The reader got into a chapter of this book (so it's listed), even if none is finished.
+    let isBegun: Bool
+
+    private var summary: String {
+        var text = "\(progress.read) of \(book.chapterCount) chapters read"
+        if isBegun, progress.read == 0, !progress.isRereading { text = "Started · " + text }
+        if progress.isRereading {
+            text += " · reading again"
+        } else if progress.isComplete, progress.round > 1 {
+            text += " · read \(progress.round) times"
+        }
+        return text
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -204,10 +227,10 @@ private struct StartedBookRow: View {
                             .foregroundStyle(.tint)
                     }
                 }
-                Text("\(read) of \(book.chapterCount) chapters read")
+                Text(summary)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                ProgressView(value: Double(min(read, book.chapterCount)), total: Double(book.chapterCount))
+                ProgressView(value: Double(min(progress.read, book.chapterCount)), total: Double(book.chapterCount))
             }
             if !isCurrent {
                 Text("Switch")

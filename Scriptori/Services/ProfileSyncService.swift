@@ -17,11 +17,18 @@ import FirebaseFirestore
 struct CloudReading: Sendable {
     var progress: ChapterProgress?
     var draft: ReflectionEntry?
+    /// Unfinished chapters of books the reader switched away from, by chapter ID.
+    var paused: [String: ChapterProgress] = [:]
+    /// Their unfinished check-ins, by chapter ID.
+    var pausedDrafts: [String: ReflectionEntry] = [:]
 }
 
 protocol ProfileSyncing: Sendable {
     func fetchProfile(userID: String) async throws -> UserProfile?
     func push(profile: UserProfile) async throws
+    /// Records what the store says this account is entitled to, without touching the rest of
+    /// the profile: a device that is behind on reading must not overwrite it with every renewal.
+    func push(subscription: SubscriptionState, userID: String) async throws
     func push(reflection: ReflectionEntry, userID: String) async throws
     func fetchReflections(userID: String) async throws -> [ReflectionEntry]
     /// The account's journal, each time another device adds to or edits it. Ends when cancelled.
@@ -30,6 +37,8 @@ protocol ProfileSyncing: Sendable {
     /// What the account holds, each time another device changes it. Ends when cancelled.
     func readingUpdates(userID: String) -> AsyncStream<CloudReading>
     func push(progress: ChapterProgress, userID: String) async throws
+    func push(paused: [String: ChapterProgress], userID: String) async throws
+    func push(pausedDrafts: [String: ReflectionEntry], userID: String) async throws
     /// `nil` removes the draft: the check-in was finished.
     func push(draft: ReflectionEntry?, userID: String) async throws
     func deleteAll(userID: String) async throws
@@ -38,12 +47,15 @@ protocol ProfileSyncing: Sendable {
 struct LocalOnlySync: ProfileSyncing {
     func fetchProfile(userID: String) async throws -> UserProfile? { nil }
     func push(profile: UserProfile) async throws {}
+    func push(subscription: SubscriptionState, userID: String) async throws {}
     func push(reflection: ReflectionEntry, userID: String) async throws {}
     func fetchReflections(userID: String) async throws -> [ReflectionEntry] { [] }
     func reflectionUpdates(userID: String) -> AsyncStream<[ReflectionEntry]> { AsyncStream { $0.finish() } }
     func fetchReading(userID: String) async throws -> CloudReading { CloudReading() }
     func readingUpdates(userID: String) -> AsyncStream<CloudReading> { AsyncStream { $0.finish() } }
     func push(progress: ChapterProgress, userID: String) async throws {}
+    func push(paused: [String: ChapterProgress], userID: String) async throws {}
+    func push(pausedDrafts: [String: ReflectionEntry], userID: String) async throws {}
     func push(draft: ReflectionEntry?, userID: String) async throws {}
     func deleteAll(userID: String) async throws {}
 }
@@ -58,7 +70,22 @@ struct FirestoreSync: ProfileSyncing {
     }
 
     func push(profile: UserProfile) async throws {
-        try db.collection("users").document(profile.id).setData(from: profile, merge: true)
+        let fields = try Firestore.Encoder().encode(profile)
+        replace(fields, in: db.collection("users").document(profile.id))
+    }
+
+    func push(subscription: SubscriptionState, userID: String) async throws {
+        let field = try Firestore.Encoder().encode(SubscriptionField(subscription: subscription))
+        replace(field, in: db.collection("users").document(userID))
+    }
+
+    /// Writes each of `fields` whole and leaves the document's other fields alone. A plain
+    /// merge is not enough: it merges inside nested values too, so anything that is absent
+    /// from the new value (a chapter's finished time, a cleared plan entry) would survive
+    /// from the old one. Not `async`, so this is Firestore's queue-and-return write; from an
+    /// `async` function the same call would wait for the server and hang while offline.
+    private func replace(_ fields: [String: Any], in document: DocumentReference) {
+        document.setData(fields, mergeFields: Array(fields.keys))
     }
 
     func push(reflection: ReflectionEntry, userID: String) async throws {
@@ -90,8 +117,9 @@ struct FirestoreSync: ProfileSyncing {
     }
 
     /// Both are kept as fields on the profile document, not documents of their own: they are
-    /// covered by the same security rule and removed with the account. Profile pushes merge,
-    /// so they leave these alone. One that can't be read is treated as absent.
+    /// covered by the same security rule and removed with the account. Profile pushes only
+    /// write the profile's own fields, so they leave these alone. One that can't be read is
+    /// treated as absent.
     func fetchReading(userID: String) async throws -> CloudReading {
         Self.reading(from: try await db.collection("users").document(userID).getDocument().data() ?? [:])
     }
@@ -100,7 +128,9 @@ struct FirestoreSync: ProfileSyncing {
         let decoder = Firestore.Decoder()
         return CloudReading(
             progress: data[progressField].flatMap { try? decoder.decode(ChapterProgress.self, from: $0) },
-            draft: data[draftField].flatMap { try? decoder.decode(ReflectionEntry.self, from: $0) }
+            draft: data[draftField].flatMap { try? decoder.decode(ReflectionEntry.self, from: $0) },
+            paused: data[pausedField].flatMap { try? decoder.decode([String: ChapterProgress].self, from: $0) } ?? [:],
+            pausedDrafts: data[pausedDraftsField].flatMap { try? decoder.decode([String: ReflectionEntry].self, from: $0) } ?? [:]
         )
     }
 
@@ -125,29 +155,48 @@ struct FirestoreSync: ProfileSyncing {
     }
 
     func push(progress: ChapterProgress, userID: String) async throws {
-        // Like the profile push, this queues the write and returns; it doesn't wait for the server.
-        try db.collection("users").document(userID).setData(from: ProgressField(chapterProgress: progress), merge: true)
+        let field = try Firestore.Encoder().encode(ProgressField(chapterProgress: progress))
+        replace(field, in: db.collection("users").document(userID))
+    }
+
+    func push(paused: [String: ChapterProgress], userID: String) async throws {
+        let field = try Firestore.Encoder().encode(PausedField(pausedChapters: paused))
+        replace(field, in: db.collection("users").document(userID))
+    }
+
+    func push(pausedDrafts: [String: ReflectionEntry], userID: String) async throws {
+        let field = try Firestore.Encoder().encode(PausedDraftsField(pausedDrafts: pausedDrafts))
+        replace(field, in: db.collection("users").document(userID))
     }
 
     func push(draft: ReflectionEntry?, userID: String) async throws {
         let document = db.collection("users").document(userID)
         if let draft {
-            try document.setData(from: DraftField(reflectionDraft: draft), merge: true)
+            replace(try Firestore.Encoder().encode(DraftField(reflectionDraft: draft)), in: document)
         } else {
             removeDraft(from: document)
         }
     }
 
-    /// Not `async`, so this is Firestore's queue-and-return write; from an `async` function
-    /// the same call would wait for the server and hang while offline.
     private func removeDraft(from document: DocumentReference) {
         document.setData([Self.draftField: FieldValue.delete()], merge: true)
     }
 
     private static let progressField = "chapterProgress"
     private static let draftField = "reflectionDraft"
+    private static let pausedField = "pausedChapters"
+    private static let pausedDraftsField = "pausedDrafts"
+    private struct PausedDraftsField: Encodable {
+        let pausedDrafts: [String: ReflectionEntry]
+    }
+    private struct PausedField: Encodable {
+        let pausedChapters: [String: ChapterProgress]
+    }
     private struct ProgressField: Encodable {
         let chapterProgress: ChapterProgress
+    }
+    private struct SubscriptionField: Encodable {
+        let subscription: SubscriptionState
     }
     private struct DraftField: Encodable {
         let reflectionDraft: ReflectionEntry

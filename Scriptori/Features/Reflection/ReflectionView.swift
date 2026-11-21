@@ -27,18 +27,43 @@ struct ReflectionView: View {
     @FocusState private var isEditing: Bool
 
     /// Starts a check-in, picking up an unfinished `draft` for this chapter if there is one.
-    init(chapter: BibleChapter, session: ChapterSession, draft: ReflectionEntry?, initialMood: Mood?, palette: Palette) {
+    /// `resuming` reopens it on the question the reader had reached, instead of the first step.
+    init(chapter: BibleChapter, session: ChapterSession, draft: ReflectionEntry?, initialMood: Mood?, palette: Palette, resuming: Bool = false) {
         self.chapter = chapter
         self.palette = palette
         self.mode = .new
         self.notes = session.progress.orderedNotes
         var entry = ReflectionEntry(chapter: chapter, day: session.progress.day, mood: initialMood)
+        var startStep = 0
         if let draft, draft.chapterID == chapter.id, draft.day == session.progress.day {
             entry = draft
             entry.mood = initialMood ?? draft.mood
+            if resuming { startStep = Self.resumeStep(for: entry, in: chapter) }
         }
         entry.highlights = session.progress.markedVerses
         _entry = State(initialValue: entry)
+        _step = State(initialValue: startStep)
+    }
+
+    /// Where a reader who left mid-check-in picks up: the first question still unanswered once
+    /// they had got past the mood step, otherwise the start.
+    private static func resumeStep(for entry: ReflectionEntry, in chapter: BibleChapter) -> Int {
+        guard entry.mood != nil else { return 0 }
+        let answered = entry.answers.map { isAnswered($0, in: chapter) }
+        guard answered.contains(true) || !entry.takeaways.isEmpty else { return 0 }
+        return (answered.firstIndex(of: false) ?? entry.answers.count - 1) + 1
+    }
+
+    /// A chip question needs a chip picked; a written question needs some text (whitespace alone
+    /// doesn't count).
+    private static func isAnswered(_ answer: ReflectionAnswer, in chapter: BibleChapter) -> Bool {
+        guard let question = chapter.reflection.questions.first(where: { $0.id == answer.questionID }) else {
+            // An older entry whose question is no longer in the guide: any answer will do.
+            return answer.isAnswered
+        }
+        return question.choices.isEmpty
+            ? !answer.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            : answer.choice != nil
     }
 
     init(editing existing: ReflectionEntry, chapter: BibleChapter, palette: Palette) {
@@ -73,8 +98,16 @@ struct ReflectionView: View {
         .onChange(of: entry) {
             if mode == .new, result == nil { model.saveReflectionDraft(entry) }
         }
+        .onAppear {
+            // So that quitting with this sheet open reopens it, on the same question, next launch.
+            guard mode == .new else { return }
+            model.saveReflectionDraft(entry)
+            model.checkInSheetChanged(isOpen: true, chapterID: chapter.id)
+        }
         .onDisappear {
-            if mode == .new, result == nil { model.saveReflectionDraft(entry) }
+            guard mode == .new else { return }
+            if result == nil { model.saveReflectionDraft(entry) }
+            model.checkInSheetChanged(isOpen: false, chapterID: chapter.id)
         }
         .sheet(isPresented: $showReread) {
             RereadSheet(chapter: chapter, highlights: entry.highlights, palette: palette) { verse in
@@ -331,17 +364,7 @@ struct ReflectionView: View {
         if step == 0 { return entry.mood != nil }
         let index = step - 1
         guard entry.answers.indices.contains(index) else { return false }
-        let answer = entry.answers[index]
-        let answered: Bool
-        if let question = chapter.reflection.questions.first(where: { $0.id == answer.questionID }) {
-            answered = question.choices.isEmpty
-                ? !answer.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                : answer.choice != nil
-        } else {
-            // An older entry whose question is no longer in the guide: any answer will do.
-            answered = answer.isAnswered
-        }
-        return answered && (!isLastStep || entry.isSubmittable)
+        return Self.isAnswered(entry.answers[index], in: chapter) && (!isLastStep || entry.isSubmittable)
     }
 
     private func toggleTakeaway(_ tag: String) {

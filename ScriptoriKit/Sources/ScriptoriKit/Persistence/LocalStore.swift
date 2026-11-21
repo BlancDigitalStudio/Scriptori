@@ -5,6 +5,10 @@ import Foundation
 public actor LocalStore {
     public enum Key: String, Sendable {
         case profile, reflections, chapterProgress, reflectionDraft
+        /// Unfinished chapters of books the reader switched away from, by chapter ID.
+        case pausedChapters
+        /// Their unfinished check-ins, by chapter ID.
+        case pausedDrafts
     }
 
     private let directory: URL

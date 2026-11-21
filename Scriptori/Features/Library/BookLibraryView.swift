@@ -252,7 +252,9 @@ struct BookPreviewView: View {
 
     private var startLabel: String {
         guard let plan = model.profile?.plan else { return "Start with \(book.name)" }
-        if plan.bookID == book.id { return "Keep reading \(book.name)" }
+        if plan.bookID == book.id {
+            return plan.position >= book.chapterCount ? "Read \(book.name) again" : "Keep reading \(book.name)"
+        }
         if let resume = plan.resumePosition(for: book.id, chapterCount: book.chapterCount) {
             return "Continue at chapter \(resume + 1)"
         }
@@ -334,7 +336,9 @@ struct BookChoiceView: View {
             case .finished(let book):
                 Image(systemName: "checkmark.seal.fill").font(.system(size: 36))
                 Text("You finished \(book.name)").font(Typography.display(34))
-                Text("All \(book.chapterCount) chapters, one day at a time. Where would you like to go next?")
+                Text(book.chapterCount == 1
+                     ? "That's the whole book, read in a day. Where would you like to go next?"
+                     : "All \(book.chapterCount) chapters, one day at a time. Where would you like to go next?")
                     .opacity(0.75)
             }
         }

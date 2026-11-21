@@ -1,7 +1,8 @@
 import ScriptoriKit
 import SwiftUI
 
-/// Every chapter the reader has checked in on, grouped by book with progress through each.
+/// Every chapter the reader has checked in on, grouped by book with progress through each. The
+/// book and chapter read most recently come first, and a chapter read again shows its latest date.
 /// Opening one shows its verses to reread.
 struct ChaptersView: View {
     @Environment(AppModel.self) private var model
@@ -18,7 +19,8 @@ struct ChaptersView: View {
                     )
                 } else {
                     List(history.startedBookIDs, id: \.self) { bookID in
-                        let chapters = history.chapters.filter { $0.bookID == bookID }.sorted { $0.number > $1.number }
+                        // `history.chapters` is already newest-read first.
+                        let chapters = history.chapters.filter { $0.bookID == bookID }
                         Section {
                             ForEach(chapters) { chapter in
                                 NavigationLink(value: chapter.chapterID) {
@@ -51,7 +53,7 @@ private struct ChapterRow: View {
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(bookName) \(chapter.number)").font(.headline)
-                Text(chapter.completedAt, format: .dateTime.weekday(.wide).month().day())
+                Text(lastReadText)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -63,6 +65,12 @@ private struct ChapterRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    /// The most recent time it was read, and how many times if it's been read again.
+    private var lastReadText: String {
+        let date = chapter.completedAt.formatted(.dateTime.weekday(.wide).month().day())
+        return chapter.checkInCount > 1 ? "\(date) · read \(chapter.checkInCount) times" : date
     }
 }
 

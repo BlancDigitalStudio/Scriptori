@@ -89,6 +89,11 @@ public struct ChapterProgress: Codable, Hashable, Sendable {
 
     public var isCompleted: Bool { completedAt != nil }
 
+    /// Whether the reader has done anything in the chapter that is worth coming back to.
+    public var hasStarted: Bool {
+        anchorVerse > 0 || furthestVerse > 0 || reachedReflection || !markedVerses.isEmpty || !orderedNotes.isEmpty
+    }
+
     /// The same position, marks and notes, dated `day`, so finishing counts for that day.
     public func carried(to day: DayKey) -> ChapterProgress {
         ChapterProgress(

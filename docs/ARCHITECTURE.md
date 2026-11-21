@@ -88,6 +88,16 @@ chapter without a check-in, and the current book is the one with the most recent
 reader picked a book after it (`plan.bookChosenAt`). The Chapters tab and Profile → Your books read the
 same history.
 
+**Reading a book again.** Choosing a finished book (including the one just finished) restarts it at
+chapter 1. A chapter can then have several check-ins: the Chapters tab shows its latest date and sorts
+newest-read first, and the Journal tab groups a chapter's entries under one row. History splits a book's
+check-ins into rounds (a repeat after every chapter was done starts a new round), so Profile → Your books
+counts the current round and `reconcile` keeps a reread's place across relaunches.
+
+**Quitting mid check-in.** The check-in sheet records that it is open (`scriptori.openCheckIn.<user>`);
+closing it clears the record, quitting doesn't. On launch Today reopens the sheet from the saved draft,
+on the first unanswered question.
+
 **Themes and guides.** Chapters with an authored guide show a themes card (at most 3 themes, each with
 an icon, a one-line summary and a key verse) after the intro, and the reflection's takeaway chips list
 those themes first. Chapters without a guide get a general fallback reflection.

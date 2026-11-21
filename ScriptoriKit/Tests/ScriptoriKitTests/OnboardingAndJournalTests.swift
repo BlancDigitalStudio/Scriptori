@@ -146,3 +146,46 @@ struct JournalTests {
         #expect(Set(Mood.allCases.map(\.symbol)).count == Mood.allCases.count)
     }
 }
+
+struct ProfileResolvingTests {
+    private func profile(read: Int, lastDay: DayKey?, chapter: String?, updatedAt: Date, versesPerCard: Int = 2) -> UserProfile {
+        var profile = UserProfile(
+            id: "u",
+            authProvider: .email,
+            streak: StreakState(current: read, longest: read, lastCompletedDay: lastDay),
+            totalChaptersRead: read,
+            reflectionCount: read,
+            plan: PlanProgress(bookID: "COL", position: read, lastCompletedDay: lastDay, lastCompletedChapterID: chapter),
+            updatedAt: updatedAt
+        )
+        profile.preferences.versesPerCard = versesPerCard
+        return profile
+    }
+
+    @Test func newestCopyWinsWhenItHasAllTheReading() {
+        let old = profile(read: 1, lastDay: DayKey(year: 2026, month: 11, day: 20), chapter: "COL.1", updatedAt: Date(timeIntervalSince1970: 100))
+        let new = profile(read: 2, lastDay: DayKey(year: 2026, month: 11, day: 23), chapter: "COL.2", updatedAt: Date(timeIntervalSince1970: 200))
+        #expect(UserProfile.resolving(old, new) == new)
+        #expect(UserProfile.resolving(new, old) == new)
+        #expect(UserProfile.resolving(nil, old) == old)
+        #expect(UserProfile.resolving(old, nil) == old)
+        #expect(UserProfile.resolving(nil, nil) == nil)
+    }
+
+    @Test func aChapterFinishedOnTheOlderCopyIsNotLost() {
+        let finishedDay = DayKey(year: 2026, month: 11, day: 23)
+        let finished = profile(read: 2, lastDay: finishedDay, chapter: "COL.2", updatedAt: Date(timeIntervalSince1970: 100))
+        // A device that hasn't caught up, changed afterwards (a setting).
+        let behind = profile(read: 1, lastDay: DayKey(year: 2026, month: 11, day: 21), chapter: nil, updatedAt: Date(timeIntervalSince1970: 200), versesPerCard: 3)
+        let now = Date(timeIntervalSince1970: 300)
+
+        let resolved = UserProfile.resolving(behind, finished, now: now)
+        #expect(resolved?.totalChaptersRead == 2)
+        #expect(resolved?.streak == finished.streak)
+        #expect(resolved?.plan.lastCompletedDay == finishedDay)
+        #expect(resolved?.plan.lastCompletedChapterID == "COL.2")
+        #expect(resolved?.preferences.versesPerCard == 3)
+        #expect(resolved?.updatedAt == now)
+        #expect(UserProfile.resolving(finished, behind, now: now) == resolved)
+    }
+}

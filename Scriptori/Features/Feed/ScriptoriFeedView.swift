@@ -8,6 +8,8 @@ struct ScriptoriFeedView: View {
     @Environment(AppModel.self) private var model
     @State private var sharePage: VersePage?
     @State private var reflectionMood: Mood?
+    /// The check-in sheet was reopened after a quit, so it opens on the question the reader reached.
+    @State private var resumingCheckIn = false
     @State private var editingEntry: ReflectionEntry?
     @State private var showBookPicker = false
 
@@ -88,11 +90,18 @@ struct ScriptoriFeedView: View {
             if session.focusedPage != nil { model.audio.beginReading() }
         }
         .onDisappear { model.audio.stopListening() }
+        // The app was quit with the check-in sheet open: land back on the reflection and reopen it.
+        .task {
+            guard reflectionMood == nil, let draft = model.checkInToResume() else { return }
+            session.focus(on: FeedItem.reflection.id)
+            resumingCheckIn = true
+            reflectionMood = draft.mood
+        }
         .sheet(item: $sharePage) { page in
             ShareCardSheet(chapter: today.chapter, verses: page.verses, typeface: prefs.typeface, palette: palette)
         }
         .sheet(item: $reflectionMood) { mood in
-            ReflectionView(chapter: today.chapter, session: session, draft: model.reflectionDraft, initialMood: mood, palette: palette)
+            ReflectionView(chapter: today.chapter, session: session, draft: model.reflectionDraft, initialMood: mood, palette: palette, resuming: resumingCheckIn)
         }
         .sheet(item: $editingEntry) { entry in
             ReflectionView(editing: entry, chapter: today.chapter, palette: palette)
@@ -145,7 +154,10 @@ struct ScriptoriFeedView: View {
                 draft: model.reflectionDraft,
                 upNext: upNextLabel(today.assignment),
                 isBookFinished: today.assignment.isBookFinished,
-                onMoodSelected: { reflectionMood = $0 },
+                onMoodSelected: {
+                    resumingCheckIn = false
+                    reflectionMood = $0
+                },
                 onEdit: { editingEntry = $0 },
                 onChooseBook: { showBookPicker = true }
             )
